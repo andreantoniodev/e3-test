@@ -1,4 +1,5 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
+import type { AuthUser } from '../auth/auth-user.type';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { FirebaseAuthGuard } from '../auth/firebase-auth.guard';
 
@@ -6,12 +7,7 @@ import { FirebaseAuthGuard } from '../auth/firebase-auth.guard';
 export class UsersController {
   @Get('me')
   @UseGuards(FirebaseAuthGuard)
-  me(@CurrentUser() user: {
-    id: string;
-    email: string;
-    name: string | null;
-    unit: { id: string; name: string; slug: string };
-  }) {
+  me(@CurrentUser() user: AuthUser) {
     return {
       id: user.id,
       email: user.email,
