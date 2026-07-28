@@ -1,0 +1,14 @@
+{
+  "name": "@e3/shared",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "echo \"shared package placeholder\"",
+    "lint": "echo \"shared package placeholder\""
+  }
+}

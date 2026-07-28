@@ -1,0 +1,10 @@
+{
+  "name": "@e3/api",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo \"API scaffold — NestJS no passo 2\"",
+    "build": "echo \"API scaffold — NestJS no passo 2\"",
+    "lint": "echo \"API scaffold — NestJS no passo 2\""
+  }
+}

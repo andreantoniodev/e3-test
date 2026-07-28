@@ -1,0 +1,10 @@
+{
+  "name": "@e3/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo \"Web scaffold — React+Vite no passo 8\"",
+    "build": "echo \"Web scaffold — React+Vite no passo 8\"",
+    "lint": "echo \"Web scaffold — React+Vite no passo 8\""
+  }
+}
