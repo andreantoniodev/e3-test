@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum WhatsAppInstanceStatus {
+  disconnected
+  qr
+  connected
+}
+
+enum MessageDirection {
+  inbound
+  outbound
+}
+
+model Unit {
+  id            String             @id @default(cuid())
+  name          String
+  slug          String             @unique
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  users         User[]
+  instances     WhatsAppInstance[]
+  conversations Conversation[]
+  messages      Message[]
+}
+
+model User {
+  id          String   @id @default(cuid())
+  firebaseUid String?  @unique
+  email       String   @unique
+  name        String?
+  unitId      String
+  unit        Unit     @relation(fields: [unitId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([unitId])
+}
+
+model WhatsAppInstance {
+  id                    String                  @id @default(cuid())
+  unitId                String
+  unit                  Unit                    @relation(fields: [unitId], references: [id])
+  evolutionInstanceName String                  @unique
+  status                WhatsAppInstanceStatus  @default(disconnected)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  @@index([unitId])
+}
+
+model Conversation {
+  id          String    @id @default(cuid())
+  unitId      String
+  unit        Unit      @relation(fields: [unitId], references: [id])
+  remoteJid   String
+  phone       String?
+  contactName String?
+  messages    Message[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([unitId, remoteJid])
+  @@index([unitId])
+}
+
+model Message {
+  id             String           @id @default(cuid())
+  conversationId String
+  conversation   Conversation     @relation(fields: [conversationId], references: [id])
+  unitId         String
+  unit           Unit             @relation(fields: [unitId], references: [id])
+  direction      MessageDirection
+  body           String
+  externalId     String?
+  createdAt      DateTime         @default(now())
+
+  @@index([unitId, createdAt])
+  @@index([conversationId, createdAt])
+}

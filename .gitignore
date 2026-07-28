@@ -12,3 +12,5 @@ firebase-service-account.json
 *-firebase-adminsdk-*.json
 .firebase
 apps/web/.firebase
+apps/api/src/generated
+apps/api/generated
