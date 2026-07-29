@@ -48,6 +48,8 @@ model WhatsAppInstance {
   unitId                String
   unit                  Unit                    @relation(fields: [unitId], references: [id])
   evolutionInstanceName String                  @unique
+  evolutionToken        String?
+  phone                 String?
   status                WhatsAppInstanceStatus  @default(disconnected)
   lastQrCode            String?
   createdAt             DateTime                @default(now())
