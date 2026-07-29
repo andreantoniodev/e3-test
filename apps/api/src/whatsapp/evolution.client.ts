@@ -106,4 +106,16 @@ export class EvolutionClient {
       instanceId,
     });
   }
+
+  sendText(instanceId: string, number: string, text: string) {
+    return this.request<{
+      data?: { Info?: { ID?: string } };
+      message?: string;
+    }>({
+      path: '/send/text',
+      method: 'POST',
+      instanceId,
+      body: { number, text },
+    });
+  }
 }

@@ -14,6 +14,8 @@ type EvolutionGoWebhookBody = {
   data?: unknown;
 };
 
+const AUTO_REPLY_TEXT = 'Oi! Aqui é o Atendente da E3';
+
 @Injectable()
 export class WhatsappService {
   constructor(
@@ -250,13 +252,25 @@ export class WhatsappService {
     }
 
     if (event === EvolutionGoEvent.Message) {
-      await this.persistInboundMessage(instance.unitId, body.data);
+      await this.persistInboundMessage(
+        instance.unitId,
+        instance.evolutionInstanceName,
+        body.data,
+      );
     }
 
     return { ok: true };
   }
 
-  private async persistInboundMessage(unitId: string, data: unknown) {
+  private isAutoReplyTrigger(body: string) {
+    return body.trim().toLowerCase() === 'oi';
+  }
+
+  private async persistInboundMessage(
+    unitId: string,
+    evolutionInstanceId: string,
+    data: unknown,
+  ) {
     const payload = data as
       | {
           Info?: {
@@ -325,5 +339,46 @@ export class WhatsappService {
         externalId: payload.Info.ID || null,
       },
     });
+
+    if (this.isAutoReplyTrigger(body) && phone) {
+      await this.sendAutoReply({
+        unitId,
+        evolutionInstanceId,
+        conversationId: conversation.id,
+        number: phone,
+      });
+    }
+  }
+
+  private async sendAutoReply(params: {
+    unitId: string;
+    evolutionInstanceId: string;
+    conversationId: string;
+    number: string;
+  }) {
+    try {
+      const sent = await this.evolution.sendText(
+        params.evolutionInstanceId,
+        params.number,
+        AUTO_REPLY_TEXT,
+      );
+
+      await this.prisma.message.create({
+        data: {
+          conversationId: params.conversationId,
+          unitId: params.unitId,
+          direction: 'outbound',
+          body: AUTO_REPLY_TEXT,
+          externalId: sent.data?.Info?.ID || null,
+        },
+      });
+
+      await this.prisma.conversation.update({
+        where: { id: params.conversationId },
+        data: { updatedAt: new Date() },
+      });
+    } catch {
+      return;
+    }
   }
 }
