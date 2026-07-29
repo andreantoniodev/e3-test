@@ -20,26 +20,6 @@ async function main() {
     update: { name: 'Unidade B' },
     create: { name: 'Unidade B', slug: 'unidade-b' },
   });
-
-  await prisma.user.upsert({
-    where: { email: 'andreantoniosilva96@gmail.com' },
-    update: { name: 'André Silva', unitId: unitA.id },
-    create: {
-      email: 'andreantoniosilva96@gmail.com',
-      name: 'André Silva',
-      unitId: unitA.id,
-    },
-  });
-
-  await prisma.user.upsert({
-    where: { email: 'andreantoniodeveloper@gmail.com' },
-    update: { name: 'Atendente Unidade B', unitId: unitB.id },
-    create: {
-      email: 'andreantoniodeveloper@gmail.com',
-      name: 'Atendente Unidade B',
-      unitId: unitB.id,
-    },
-  });
 }
 
 main()

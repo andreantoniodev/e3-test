@@ -1,11 +1,19 @@
 import { ConfigProvider, App as AntApp, Spin, theme as antdTheme } from 'antd';
 import ptBR from 'antd/locale/pt_BR';
 import { AuthProvider, useAuth } from './auth/AuthContext';
+import { AdminPage } from './pages/AdminPage';
 import { InboxPage } from './pages/InboxPage';
 import { LoginPage } from './pages/LoginPage';
 
 function AppRouter() {
   const { user, loading } = useAuth();
+  const isAdminRoute =
+    typeof window !== 'undefined' &&
+    window.location.pathname.replace(/\/$/, '') === '/admin';
+
+  if (isAdminRoute) {
+    return <AdminPage />;
+  }
 
   if (loading) {
     return (

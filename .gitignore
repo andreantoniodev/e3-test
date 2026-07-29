@@ -8,6 +8,7 @@ build
 *.log
 .DS_Store
 coverage
+*.tsbuildinfo
 firebase-service-account.json
 *-firebase-adminsdk-*.json
 .firebase

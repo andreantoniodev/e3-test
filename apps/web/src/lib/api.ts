@@ -44,6 +44,59 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   }
 }
 
+export async function adminFetch<T>(
+  path: string,
+  adminSecret: string,
+  init: RequestInit = {},
+): Promise<T> {
+  try {
+    const response = await fetch(`${API_URL}${path}`, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-secret': adminSecret,
+        ...(init.headers || {}),
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || `HTTP ${response.status}`);
+    }
+
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
+    return response.json() as Promise<T>;
+  } catch (error) {
+    throw new Error(getFriendlyError(error, 'Falha ao comunicar com a API admin.'));
+  }
+}
+
+export type AdminUnit = {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+  updatedAt?: string;
+  _count?: {
+    users: number;
+    conversations: number;
+    instances: number;
+  };
+};
+
+export type AdminUser = {
+  id: string;
+  email: string;
+  name: string | null;
+  unitId: string;
+  createdAt: string;
+  updatedAt: string;
+  unit: { id: string; name: string; slug: string };
+};
+
 export type MeResponse = {
   id: string;
   email: string;

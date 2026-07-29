@@ -55,6 +55,9 @@ export function LoginPage() {
           >
             Entrar com Google
           </Button>
+          <Button type="link" href="/admin" block>
+            Área admin
+          </Button>
         </Space>
       </div>
     </div>

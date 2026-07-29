@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { HealthController } from './health/health.controller';
@@ -13,6 +14,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     UsersModule,
     ConversationsModule,
     WhatsappModule,
+    AdminModule,
   ],
   controllers: [HealthController],
 })
