@@ -13,6 +13,7 @@ import dayjs from 'dayjs';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { WhatsAppPanel } from '../components/WhatsAppPanel';
+import { IMAGES } from '../constants';
 import {
   ConversationItem,
   MeResponse,
@@ -310,7 +311,7 @@ export function InboxPage() {
           <div className="app-header__brand-row">
             <img
               className="app-header__logo"
-              src="https://lpw.e3digitalagencia.com/wp-content/uploads/2026/03/1.svg"
+              src={IMAGES.logoHeader}
               alt="E3 Digital"
             />
             <h1 className="app-header__title">Mini CRM</h1>

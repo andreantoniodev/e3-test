@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { WhatsAppInstanceStatus } from '../generated/prisma/client';
+import { BOT_AUTO_REPLY_TEXT } from '../constants';
+import { MessageDirection, WhatsAppInstanceStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   EVOLUTION_GO_CONNECTED_EVENTS,
@@ -24,8 +25,6 @@ type PendingPairing = {
   qrcode: string | null;
   phone: string | null;
 };
-
-const AUTO_REPLY_TEXT = 'Oi! Aqui é o Atendente da E3';
 
 @Injectable()
 export class WhatsappService {
@@ -447,6 +446,18 @@ export class WhatsappService {
     return this.getStatus(unitId);
   }
 
+  private logRemoteCleanupError(
+    action: string,
+    instanceId: string,
+    error: unknown,
+  ) {
+    this.logger.warn(
+      `Falha ao ${action} na Evolution | instance=${instanceId} | ${
+        error instanceof Error ? error.message : error
+      }`,
+    );
+  }
+
   async disconnectAndDelete(unitId: string) {
     const pending = this.pendingByUnitId.get(unitId);
     if (pending) {
@@ -455,8 +466,12 @@ export class WhatsappService {
           pending.evolutionInstanceId,
           pending.evolutionToken,
         );
-      } catch {
-        // ignore remote cleanup errors
+      } catch (error) {
+        this.logRemoteCleanupError(
+          'excluir instância pendente',
+          pending.evolutionInstanceId,
+          error,
+        );
       }
       this.clearPending(unitId);
     }
@@ -471,8 +486,12 @@ export class WhatsappService {
           instance.evolutionInstanceName,
           instance.evolutionToken || undefined,
         );
-      } catch {
-        // ignore remote cleanup errors
+      } catch (error) {
+        this.logRemoteCleanupError(
+          'excluir instância',
+          instance.evolutionInstanceName,
+          error,
+        );
       }
     }
 
@@ -494,14 +513,23 @@ export class WhatsappService {
         pending.evolutionInstanceId,
         pending.evolutionToken,
       );
-    } catch {
+    } catch (deleteError) {
+      this.logRemoteCleanupError(
+        'excluir instância pendente',
+        pending.evolutionInstanceId,
+        deleteError,
+      );
       try {
         await this.evolution.disconnect(
           pending.evolutionInstanceId,
           pending.evolutionToken,
         );
-      } catch {
-        // ignore
+      } catch (disconnectError) {
+        this.logRemoteCleanupError(
+          'desconectar instância pendente',
+          pending.evolutionInstanceId,
+          disconnectError,
+        );
       }
     }
 
@@ -716,7 +744,7 @@ export class WhatsappService {
       data: {
         conversationId: conversation.id,
         unitId: instance.unitId,
-        direction: 'inbound',
+        direction: MessageDirection.inbound,
         body,
         externalId: payload.Info.ID || null,
       },
@@ -745,15 +773,15 @@ export class WhatsappService {
         params.evolutionInstanceId,
         params.evolutionToken,
         params.number,
-        AUTO_REPLY_TEXT,
+        BOT_AUTO_REPLY_TEXT,
       );
 
       await this.prisma.message.create({
         data: {
           conversationId: params.conversationId,
           unitId: params.unitId,
-          direction: 'outbound',
-          body: AUTO_REPLY_TEXT,
+          direction: MessageDirection.outbound,
+          body: BOT_AUTO_REPLY_TEXT,
           externalId: sent.data?.Info?.ID || null,
         },
       });

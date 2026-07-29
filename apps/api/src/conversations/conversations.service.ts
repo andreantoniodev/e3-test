@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { WhatsAppInstanceStatus } from '../generated/prisma/client';
+import { WhatsAppInstanceStatus, MessageDirection } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvolutionClient } from '../whatsapp/evolution.client';
 
@@ -112,7 +112,7 @@ export class ConversationsService {
       data: {
         conversationId: conversation.id,
         unitId,
-        direction: 'outbound',
+        direction: MessageDirection.outbound,
         body: text,
         externalId: sent.data?.Info?.ID || null,
       },

@@ -2,6 +2,7 @@ import { GoogleOutlined } from '@ant-design/icons';
 import { Alert, Button, Space } from 'antd';
 import { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
+import { IMAGES } from '../constants';
 import { getFriendlyError } from '../lib/errors';
 
 export function LoginPage() {
@@ -28,7 +29,7 @@ export function LoginPage() {
           <div className="login-card__brand">
             <img
               className="login-card__logo"
-              src="https://lpw.e3digitalagencia.com/wp-content/uploads/2026/03/logo-horizontal-brancas.svg"
+              src={IMAGES.logoLogin}
               alt="E3 Digital"
             />
             <h1>Mini CRM</h1>
