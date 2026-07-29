@@ -56,4 +56,24 @@ export class ConversationsService {
       },
     });
   }
+
+  async remove(unitId: string, conversationId: string) {
+    const conversation = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, unitId },
+      select: { id: true },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException();
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.message.deleteMany({
+        where: { conversationId, unitId },
+      }),
+      this.prisma.conversation.delete({
+        where: { id: conversationId },
+      }),
+    ]);
+  }
 }
