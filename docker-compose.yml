@@ -11,11 +11,89 @@ services:
       POSTGRES_DB: mini_crm
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d mini_crm"]
       interval: 5s
       timeout: 5s
       retries: 10
 
+  db-init:
+    image: postgres:16-alpine
+    container_name: mini-crm-db-init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        psql postgresql://postgres:postgres@postgres:5432/mini_crm -v ON_ERROR_STOP=1 -c "CREATE SCHEMA IF NOT EXISTS evogo_auth";
+        psql postgresql://postgres:postgres@postgres:5432/mini_crm -v ON_ERROR_STOP=1 -c "CREATE SCHEMA IF NOT EXISTS evogo_users";
+        echo "db-init done"
+
+  evolution-go:
+    image: evoapicloud/evolution-go:latest
+    container_name: mini-crm-evolution-go
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      SERVER_PORT: 8080
+      CLIENT_NAME: evolution
+      GLOBAL_API_KEY: ${EVOLUTION_API_KEY:-change-me}
+      POSTGRES_AUTH_DB: postgresql://postgres:postgres@postgres:5432/mini_crm?sslmode=disable&options=-csearch_path%3Devogo_auth
+      POSTGRES_USERS_DB: postgresql://postgres:postgres@postgres:5432/mini_crm?sslmode=disable&options=-csearch_path%3Devogo_users
+      DATABASE_SAVE_MESSAGES: "false"
+      WADEBUG: INFO
+      LOGTYPE: console
+      CONNECT_ON_STARTUP: "false"
+      WEBHOOK_FILES: "true"
+    volumes:
+      - evolution_data:/app/dbdata
+      - evolution_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/server/ok"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: mini-crm-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/mini_crm?schema=public
+      EVOLUTION_API_URL: http://evolution-go:8080
+      PUBLIC_API_URL: http://api:3000
+      RUN_SEED: ${RUN_SEED:-true}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      evolution-go:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
 volumes:
   pgdata:
+  evolution_data:
+  evolution_logs:

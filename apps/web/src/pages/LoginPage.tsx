@@ -2,9 +2,10 @@ import { GoogleOutlined } from '@ant-design/icons';
 import { Alert, Button, Card, Space, Typography } from 'antd';
 import { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
+import { getFriendlyError } from '../lib/errors';
 
 export function LoginPage() {
-  const { signInWithGoogle } = useAuth();
+  const { signInWithGoogle, configured } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -14,7 +15,7 @@ export function LoginPage() {
     try {
       await signInWithGoogle();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha no login');
+      setError(getFriendlyError(err, 'Não foi possível entrar com Google.'));
     } finally {
       setLoading(false);
     }
@@ -40,12 +41,21 @@ export function LoginPage() {
               Entre com Google para acessar as conversas da sua unidade.
             </Typography.Text>
           </div>
+          {!configured ? (
+            <Alert
+              type="warning"
+              showIcon
+              message="Firebase não configurado"
+              description="Preencha VITE_FIREBASE_API_KEY, VITE_FIREBASE_AUTH_DOMAIN, VITE_FIREBASE_PROJECT_ID e VITE_FIREBASE_APP_ID em apps/web/.env e reinicie o Vite."
+            />
+          ) : null}
           {error ? <Alert type="error" message={error} showIcon /> : null}
           <Button
             type="primary"
             size="large"
             icon={<GoogleOutlined />}
             loading={loading}
+            disabled={!configured}
             block
             onClick={handleLogin}
           >

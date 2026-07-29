@@ -6,6 +6,7 @@ import {
   WhatsappStatus,
   apiFetch,
 } from '../lib/api';
+import { getFriendlyError } from '../lib/errors';
 
 const statusColor: Record<WhatsAppInstanceStatus, string> = {
   [WhatsAppInstanceStatus.Disconnected]: 'default',
@@ -31,7 +32,7 @@ export function WhatsAppPanel() {
       setError(null);
       return status;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao carregar status');
+      setError(getFriendlyError(err, 'Erro ao carregar status do WhatsApp.'));
       return null;
     }
   }, []);
@@ -42,7 +43,7 @@ export function WhatsAppPanel() {
       setData(qr);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao carregar QR');
+      setError(getFriendlyError(err, 'Erro ao carregar o QR Code.'));
     }
   }, []);
 
@@ -78,7 +79,7 @@ export function WhatsAppPanel() {
       }
       message.success('Conexão iniciada');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao conectar');
+      setError(getFriendlyError(err, 'Falha ao conectar o WhatsApp.'));
     } finally {
       setLoading(false);
     }

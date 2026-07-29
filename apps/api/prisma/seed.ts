@@ -22,20 +22,20 @@ async function main() {
   });
 
   await prisma.user.upsert({
-    where: { email: 'unidade.a@example.com' },
-    update: { name: 'Atendente Unidade A', unitId: unitA.id },
+    where: { email: 'andreantoniosilva96@gmail.com' },
+    update: { name: 'André Silva', unitId: unitA.id },
     create: {
-      email: 'unidade.a@example.com',
-      name: 'Atendente Unidade A',
+      email: 'andreantoniosilva96@gmail.com',
+      name: 'André Silva',
       unitId: unitA.id,
     },
   });
 
   await prisma.user.upsert({
-    where: { email: 'unidade.b@example.com' },
+    where: { email: 'andreantoniosilva962@gmail.com' },
     update: { name: 'Atendente Unidade B', unitId: unitB.id },
     create: {
-      email: 'unidade.b@example.com',
+      email: 'andreantoniosilva962@gmail.com',
       name: 'Atendente Unidade B',
       unitId: unitB.id,
     },

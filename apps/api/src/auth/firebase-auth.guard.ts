@@ -31,12 +31,22 @@ export class FirebaseAuthGuard implements CanActivate {
     let decoded: { uid: string; email?: string; name?: string };
     try {
       decoded = await this.firebase.verifyIdToken(token);
-    } catch {
-      throw new UnauthorizedException();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : '';
+      if (/Firebase Admin is not configured/i.test(detail)) {
+        throw new UnauthorizedException(
+          'Firebase Admin não configurado na API. Preencha FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL e FIREBASE_PRIVATE_KEY.',
+        );
+      }
+      throw new UnauthorizedException(
+        'Token Firebase inválido ou expirado. Faça login novamente.',
+      );
     }
 
     if (!decoded.email) {
-      throw new UnauthorizedException();
+      throw new UnauthorizedException(
+        'Conta Google sem e-mail. Use outra conta ou libere o e-mail no Google.',
+      );
     }
 
     let user = await this.prisma.user.findUnique({
@@ -45,7 +55,9 @@ export class FirebaseAuthGuard implements CanActivate {
     });
 
     if (!user) {
-      throw new ForbiddenException();
+      throw new ForbiddenException(
+        `E-mail ${decoded.email} não está cadastrado. Inclua-o no seed da API.`,
+      );
     }
 
     if (

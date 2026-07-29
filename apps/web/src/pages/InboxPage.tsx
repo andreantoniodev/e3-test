@@ -5,6 +5,7 @@ import {
   Empty,
   Layout,
   List,
+  Space,
   Spin,
   Typography,
   theme,
@@ -20,6 +21,7 @@ import {
   MessageItem,
   apiFetch,
 } from '../lib/api';
+import { getFriendlyError } from '../lib/errors';
 
 const { Header, Sider, Content } = Layout;
 
@@ -31,7 +33,7 @@ export function InboxPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [loadingMe, setLoadingMe] = useState(true);
-  const [loadingConversations, setLoadingConversations] = useState(true);
+  const [loadingConversations, setLoadingConversations] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,7 +44,7 @@ export function InboxPage() {
       setConversations(data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao listar conversas');
+      setError(getFriendlyError(err, 'Erro ao listar conversas.'));
     } finally {
       setLoadingConversations(false);
     }
@@ -56,7 +58,8 @@ export function InboxPage() {
         setMe(profile);
         setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Erro ao carregar perfil');
+        setMe(null);
+        setError(getFriendlyError(err, 'Erro ao carregar perfil.'));
       } finally {
         setLoadingMe(false);
       }
@@ -87,7 +90,7 @@ export function InboxPage() {
         );
         setMessages(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Erro ao carregar mensagens');
+        setError(getFriendlyError(err, 'Erro ao carregar mensagens.'));
       } finally {
         setLoadingMessages(false);
       }
@@ -98,6 +101,34 @@ export function InboxPage() {
     return (
       <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}>
         <Spin size="large" />
+      </div>
+    );
+  }
+
+  if (!me) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'grid',
+          placeItems: 'center',
+          padding: 24,
+        }}
+      >
+        <Space direction="vertical" size="large" style={{ maxWidth: 520, width: '100%' }}>
+          <Alert
+            type="error"
+            showIcon
+            message="Não foi possível acessar o CRM"
+            description={
+              error ||
+              'A API não validou seu login. Confira o Firebase Admin e o seed de e-mails.'
+            }
+          />
+          <Button icon={<LogoutOutlined />} onClick={() => void logout()} block>
+            Sair e tentar outro login
+          </Button>
+        </Space>
       </div>
     );
   }
@@ -119,7 +150,7 @@ export function InboxPage() {
             Mini-CRM WhatsApp E3
           </Typography.Title>
           <Typography.Text type="secondary">
-            {me?.unit.name || 'Unidade'} · {user?.email}
+            {me.unit.name} · {user?.email}
           </Typography.Text>
         </div>
         <Button icon={<LogoutOutlined />} onClick={() => void logout()}>
