@@ -4,6 +4,7 @@ import {
   Button,
   Image,
   Modal,
+  Popconfirm,
   Space,
   Spin,
   Tag,
@@ -201,19 +202,6 @@ export function WhatsAppPanel() {
     }
   }
 
-  function confirmDisconnect() {
-    Modal.confirm({
-      title: 'Desconectar WhatsApp?',
-      content:
-        'Isso remove a instância na Evolution e apaga o registro no Mini CRM. Será preciso escanear o QR Code de novo para conectar.',
-      okText: 'Desconectar',
-      cancelText: 'Cancelar',
-      okButtonProps: { danger: true },
-      centered: true,
-      onOk: () => handleDisconnect(),
-    });
-  }
-
   async function handleCancelPairing() {
     if (pairedRef.current || cancelling) {
       setQrOpen(false);
@@ -260,14 +248,18 @@ export function WhatsAppPanel() {
       ) : null}
       <div className="wa-panel__row" style={{ marginTop: 10 }}>
         {isConnected ? (
-          <Button
-            icon={<DisconnectOutlined />}
-            danger
-            loading={disconnecting}
-            onClick={confirmDisconnect}
+          <Popconfirm
+            title="Desconectar WhatsApp?"
+            description="A instância será removida da Evolution e do Mini CRM."
+            okText="Desconectar"
+            cancelText="Cancelar"
+            okButtonProps={{ danger: true, loading: disconnecting }}
+            onConfirm={() => void handleDisconnect()}
           >
-            Desconectar
-          </Button>
+            <Button icon={<DisconnectOutlined />} danger loading={disconnecting}>
+              Desconectar
+            </Button>
+          </Popconfirm>
         ) : (
           <Button
             icon={<LinkOutlined />}

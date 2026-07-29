@@ -1,4 +1,4 @@
-import { ConfigProvider, Spin, theme as antdTheme } from 'antd';
+import { ConfigProvider, App as AntApp, Spin, theme as antdTheme } from 'antd';
 import ptBR from 'antd/locale/pt_BR';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import { InboxPage } from './pages/InboxPage';
@@ -42,9 +42,11 @@ export default function App() {
         },
       }}
     >
-      <AuthProvider>
-        <AppRouter />
-      </AuthProvider>
+      <AntApp>
+        <AuthProvider>
+          <AppRouter />
+        </AuthProvider>
+      </AntApp>
     </ConfigProvider>
   );
 }

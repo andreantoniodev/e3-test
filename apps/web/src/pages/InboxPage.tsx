@@ -1,15 +1,16 @@
-import { DeleteOutlined, LogoutOutlined } from '@ant-design/icons';
+import { DeleteOutlined, LogoutOutlined, SendOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
   Empty,
+  Input,
   Popconfirm,
   Space,
   Spin,
   message,
 } from 'antd';
 import dayjs from 'dayjs';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { WhatsAppPanel } from '../components/WhatsAppPanel';
 import {
@@ -27,15 +28,56 @@ export function InboxPage() {
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageItem[]>([]);
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
   const [loadingMe, setLoadingMe] = useState(true);
   const [loadingConversations, setLoadingConversations] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastReadAt, setLastReadAt] = useState<Record<string, string>>(() => {
+    try {
+      const raw = sessionStorage.getItem('mini-crm-last-read');
+      return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+    } catch {
+      return {};
+    }
+  });
+  const threadEndRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const selectedConversation = useMemo(
     () => conversations.find((item) => item.id === selectedId) ?? null,
     [conversations, selectedId],
+  );
+
+  const markConversationRead = useCallback((conversationId: string, at: string) => {
+    setLastReadAt((prev) => {
+      const current = prev[conversationId];
+      if (current && new Date(current).getTime() >= new Date(at).getTime()) {
+        return prev;
+      }
+      const next = { ...prev, [conversationId]: at };
+      sessionStorage.setItem('mini-crm-last-read', JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const isConversationUnread = useCallback(
+    (item: ConversationItem) => {
+      if (item.id === selectedId) {
+        return false;
+      }
+      if (!item.messages[0]) {
+        return false;
+      }
+      const readAt = lastReadAt[item.id];
+      if (!readAt) {
+        return true;
+      }
+      return new Date(item.updatedAt).getTime() > new Date(readAt).getTime();
+    },
+    [lastReadAt, selectedId],
   );
 
   const loadConversations = useCallback(async (opts?: { silent?: boolean }) => {
@@ -60,6 +102,37 @@ export function InboxPage() {
       }
     }
   }, []);
+
+  const loadMessages = useCallback(
+    async (conversationId: string, opts?: { silent?: boolean }) => {
+      if (!opts?.silent) {
+        setLoadingMessages(true);
+      }
+      try {
+        const data = await apiFetch<MessageItem[]>(
+          `/conversations/${conversationId}/messages`,
+        );
+        setMessages((prev) => {
+          if (
+            prev.length === data.length &&
+            prev[prev.length - 1]?.id === data[data.length - 1]?.id
+          ) {
+            return prev;
+          }
+          return data;
+        });
+      } catch (err) {
+        if (!opts?.silent) {
+          setError(getFriendlyError(err, 'Erro ao carregar mensagens.'));
+        }
+      } finally {
+        if (!opts?.silent) {
+          setLoadingMessages(false);
+        }
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     void (async () => {
@@ -91,22 +164,36 @@ export function InboxPage() {
   useEffect(() => {
     if (!selectedId) {
       setMessages([]);
+      setDraft('');
       return;
     }
-    void (async () => {
-      setLoadingMessages(true);
-      try {
-        const data = await apiFetch<MessageItem[]>(
-          `/conversations/${selectedId}/messages`,
-        );
-        setMessages(data);
-      } catch (err) {
-        setError(getFriendlyError(err, 'Erro ao carregar mensagens.'));
-      } finally {
-        setLoadingMessages(false);
-      }
-    })();
-  }, [selectedId]);
+    setDraft('');
+    void loadMessages(selectedId);
+    const id = window.setInterval(() => {
+      void loadMessages(selectedId, { silent: true });
+    }, 4000);
+    return () => window.clearInterval(id);
+  }, [selectedId, loadMessages]);
+
+  useEffect(() => {
+    if (!selectedId || !selectedConversation) {
+      return;
+    }
+    markConversationRead(selectedId, selectedConversation.updatedAt);
+  }, [selectedId, selectedConversation, markConversationRead]);
+
+  useEffect(() => {
+    const end = threadEndRef.current;
+    const thread = end?.parentElement;
+    if (!thread || !end) {
+      return;
+    }
+    const distanceFromBottom =
+      thread.scrollHeight - thread.scrollTop - thread.clientHeight;
+    if (distanceFromBottom < 120) {
+      thread.scrollTop = thread.scrollHeight;
+    }
+  }, [messages, selectedId]);
 
   async function handleDeleteConversation(conversationId: string) {
     setDeletingId(conversationId);
@@ -125,6 +212,50 @@ export function InboxPage() {
       setError(getFriendlyError(err, 'Não foi possível excluir a conversa.'));
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  async function handleSendMessage() {
+    if (!selectedId || !draft.trim() || sending) {
+      return;
+    }
+
+    const conversationId = selectedId;
+    const text = draft.trim();
+    setSending(true);
+    try {
+      const sent = await apiFetch<MessageItem>(
+        `/conversations/${conversationId}/messages`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ body: text }),
+        },
+      );
+      setMessages((prev) => [...prev, sent]);
+      setDraft('');
+      setError(null);
+      setConversations((prev) => {
+        const updated = prev.map((item) =>
+          item.id === conversationId
+            ? {
+                ...item,
+                updatedAt: sent.createdAt,
+                messages: [sent],
+              }
+            : item,
+        );
+        return [...updated].sort(
+          (a, b) =>
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+        );
+      });
+    } catch (err) {
+      setError(getFriendlyError(err, 'Não foi possível enviar a mensagem.'));
+    } finally {
+      setSending(false);
+      requestAnimationFrame(() => {
+        composerRef.current?.focus();
+      });
     }
   }
 
@@ -229,26 +360,41 @@ export function InboxPage() {
                 {conversations.map((item) => {
                   const last = item.messages[0];
                   const title = item.contactName || item.phone || item.remoteJid;
+                  const unread = isConversationUnread(item);
                   return (
                     <div
                       key={item.id}
-                      className={`conversation-item${selectedId === item.id ? ' is-active' : ''}`}
-                      onClick={() => setSelectedId(item.id)}
+                      className={`conversation-item${selectedId === item.id ? ' is-active' : ''}${unread ? ' is-unread' : ''}`}
+                      onClick={() => {
+                        setSelectedId(item.id);
+                        markConversationRead(item.id, item.updatedAt);
+                      }}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter' || event.key === ' ') {
                           setSelectedId(item.id);
+                          markConversationRead(item.id, item.updatedAt);
                         }
                       }}
                       role="button"
                       tabIndex={0}
                     >
                       <div className="conversation-item__body">
-                        <div className="conversation-item__title">{title}</div>
+                        <div className="conversation-item__title-row">
+                          <div className="conversation-item__title">{title}</div>
+                          {unread ? (
+                            <span className="conversation-item__badge">Nova</span>
+                          ) : null}
+                        </div>
                         <div className="conversation-item__preview">
                           {last?.body || 'Sem mensagens'}
                         </div>
-                        <div className="conversation-item__time">
-                          {dayjs(item.updatedAt).format('DD/MM HH:mm')}
+                        <div className="conversation-item__meta">
+                          <span className="conversation-item__time">
+                            {dayjs(item.updatedAt).format('DD/MM HH:mm')}
+                          </span>
+                          {unread ? (
+                            <span className="conversation-item__unread-dot" aria-hidden />
+                          ) : null}
                         </div>
                       </div>
                       <Popconfirm
@@ -351,6 +497,39 @@ export function InboxPage() {
                     </div>
                   ))
                 )}
+                <div ref={threadEndRef} />
+              </div>
+
+              <div
+                className="chat-composer"
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                  }
+                }}
+              >
+                <Input.TextArea
+                  ref={composerRef}
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  placeholder="Digite uma mensagem"
+                  autoSize={{ minRows: 1, maxRows: 4 }}
+                  onPressEnter={(event) => {
+                    if (!event.shiftKey) {
+                      event.preventDefault();
+                      void handleSendMessage();
+                    }
+                  }}
+                />
+                <Button
+                  type="primary"
+                  icon={<SendOutlined />}
+                  loading={sending}
+                  disabled={!draft.trim() || sending}
+                  onClick={() => void handleSendMessage()}
+                >
+                  Enviar
+                </Button>
               </div>
             </>
           )}
