@@ -1,12 +1,18 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { WhatsAppInstanceStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { EvolutionClient } from '../whatsapp/evolution.client';
 
 @Injectable()
 export class ConversationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly evolution: EvolutionClient,
+  ) {}
 
   listByUnit(unitId: string) {
     return this.prisma.conversation.findMany({
@@ -55,6 +61,77 @@ export class ConversationsService {
         createdAt: true,
       },
     });
+  }
+
+  async sendMessage(unitId: string, conversationId: string, body: string) {
+    const text = body.trim();
+    if (!text) {
+      throw new BadRequestException('Mensagem vazia.');
+    }
+
+    const conversation = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, unitId },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversa não encontrada.');
+    }
+
+    const instance = await this.prisma.whatsAppInstance.findFirst({
+      where: {
+        unitId,
+        status: WhatsAppInstanceStatus.connected,
+        evolutionToken: { not: null },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    if (!instance?.evolutionToken) {
+      throw new BadRequestException(
+        'WhatsApp desconectado. Conecte uma instância para enviar mensagens.',
+      );
+    }
+
+    const number =
+      conversation.phone ||
+      conversation.remoteJid.split('@')[0]?.split(':')[0] ||
+      '';
+
+    if (!number) {
+      throw new BadRequestException('Número do contato inválido.');
+    }
+
+    const sent = await this.evolution.sendText(
+      instance.evolutionInstanceName,
+      instance.evolutionToken,
+      number,
+      text,
+    );
+
+    const message = await this.prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        unitId,
+        direction: 'outbound',
+        body: text,
+        externalId: sent.data?.Info?.ID || null,
+      },
+      select: {
+        id: true,
+        conversationId: true,
+        direction: true,
+        body: true,
+        externalId: true,
+        createdAt: true,
+      },
+    });
+
+    await this.prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { updatedAt: new Date() },
+    });
+
+    return message;
   }
 
   async remove(unitId: string, conversationId: string) {

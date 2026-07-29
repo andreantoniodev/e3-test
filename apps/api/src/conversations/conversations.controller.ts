@@ -1,4 +1,13 @@
-import { Controller, Delete, Get, HttpCode, Param, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import type { AuthUser } from '../auth/auth-user.type';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { FirebaseAuthGuard } from '../auth/firebase-auth.guard';
@@ -17,6 +26,19 @@ export class ConversationsController {
   @Get(':id/messages')
   messages(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.conversationsService.listMessages(user.unitId, id);
+  }
+
+  @Post(':id/messages')
+  send(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() body: { body?: string },
+  ) {
+    return this.conversationsService.sendMessage(
+      user.unitId,
+      id,
+      body?.body || '',
+    );
   }
 
   @Delete(':id')
