@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import * as QRCode from 'qrcode';
+import { EVOLUTION_API_WEBHOOK_EVENTS } from './evolution-api.events';
 
 export function describeEvolutionError(error: unknown) {
   if (error instanceof HttpException) {
@@ -122,11 +123,7 @@ export class EvolutionClient {
           url: params.webhookUrl,
           byEvents: false,
           base64: true,
-          events: [
-            'QRCODE_UPDATED',
-            'CONNECTION_UPDATE',
-            'MESSAGES_UPSERT',
-          ],
+          events: [...EVOLUTION_API_WEBHOOK_EVENTS],
         },
       },
     });
@@ -143,11 +140,7 @@ export class EvolutionClient {
           url: webhookUrl,
           byEvents: false,
           base64: true,
-          events: [
-            'QRCODE_UPDATED',
-            'CONNECTION_UPDATE',
-            'MESSAGES_UPSERT',
-          ],
+          events: [...EVOLUTION_API_WEBHOOK_EVENTS],
         },
       },
     });

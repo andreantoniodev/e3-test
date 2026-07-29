@@ -56,7 +56,7 @@ export class FirebaseAuthGuard implements CanActivate {
 
     if (!user) {
       throw new ForbiddenException(
-        `E-mail ${decoded.email} não está cadastrado. Inclua-o no seed da API.`,
+        `E-mail ${decoded.email} não está vinculado a nenhuma unidade. Cadastre-o no painel /admin.`,
       );
     }
 

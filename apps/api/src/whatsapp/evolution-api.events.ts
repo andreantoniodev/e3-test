@@ -4,13 +4,26 @@ export enum EvolutionApiEvent {
   MessagesUpsert = 'messages.upsert',
 }
 
+export enum EvolutionApiSubscribeEvent {
+  QrcodeUpdated = 'QRCODE_UPDATED',
+  ConnectionUpdate = 'CONNECTION_UPDATE',
+  MessagesUpsert = 'MESSAGES_UPSERT',
+}
+
+export const EVOLUTION_API_WEBHOOK_EVENTS = [
+  EvolutionApiSubscribeEvent.QrcodeUpdated,
+  EvolutionApiSubscribeEvent.ConnectionUpdate,
+  EvolutionApiSubscribeEvent.MessagesUpsert,
+] as const;
+
 const EVENT_ALIASES: Record<string, EvolutionApiEvent> = {
-  'qrcode.updated': EvolutionApiEvent.QrcodeUpdated,
-  QRCODE_UPDATED: EvolutionApiEvent.QrcodeUpdated,
-  'connection.update': EvolutionApiEvent.ConnectionUpdate,
-  CONNECTION_UPDATE: EvolutionApiEvent.ConnectionUpdate,
-  'messages.upsert': EvolutionApiEvent.MessagesUpsert,
-  MESSAGES_UPSERT: EvolutionApiEvent.MessagesUpsert,
+  [EvolutionApiEvent.QrcodeUpdated]: EvolutionApiEvent.QrcodeUpdated,
+  [EvolutionApiSubscribeEvent.QrcodeUpdated]: EvolutionApiEvent.QrcodeUpdated,
+  [EvolutionApiEvent.ConnectionUpdate]: EvolutionApiEvent.ConnectionUpdate,
+  [EvolutionApiSubscribeEvent.ConnectionUpdate]:
+    EvolutionApiEvent.ConnectionUpdate,
+  [EvolutionApiEvent.MessagesUpsert]: EvolutionApiEvent.MessagesUpsert,
+  [EvolutionApiSubscribeEvent.MessagesUpsert]: EvolutionApiEvent.MessagesUpsert,
 };
 
 export function normalizeEvolutionApiEvent(
