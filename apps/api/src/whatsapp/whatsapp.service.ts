@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { WhatsAppInstanceStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -14,17 +15,111 @@ type EvolutionGoWebhookBody = {
   data?: unknown;
 };
 
+type PendingPairing = {
+  unitId: string;
+  unitSlug: string;
+  instanceName: string;
+  evolutionInstanceId: string;
+  evolutionToken: string;
+  qrcode: string | null;
+  phone: string | null;
+};
+
 const AUTO_REPLY_TEXT = 'Oi! Aqui é o Atendente da E3';
 
 @Injectable()
 export class WhatsappService {
+  private readonly logger = new Logger(WhatsappService.name);
+  private readonly pendingByUnitId = new Map<string, PendingPairing>();
+  private readonly pendingByEvolutionId = new Map<string, PendingPairing>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly evolution: EvolutionClient,
   ) {}
 
+  private phoneFromJid(jid: string | null | undefined) {
+    if (!jid) {
+      return null;
+    }
+    const user = jid.split('@')[0] || '';
+    const phone = (user.split(':')[0] || '').replace(/\D/g, '');
+    return phone || null;
+  }
+
+  private extractPhoneFromUnknown(data: unknown): string | null {
+    if (!data) {
+      return null;
+    }
+    if (typeof data === 'string') {
+      return this.phoneFromJid(data);
+    }
+    if (typeof data !== 'object') {
+      return null;
+    }
+    const record = data as Record<string, unknown>;
+    const candidates = [record.phone, record.Phone, record.jid, record.Jid, record.wid];
+    for (const candidate of candidates) {
+      if (typeof candidate !== 'string' || !candidate.trim()) {
+        continue;
+      }
+      if (candidate.includes('@')) {
+        const phone = this.phoneFromJid(candidate);
+        if (phone) {
+          return phone;
+        }
+        continue;
+      }
+      const digits = candidate.replace(/\D/g, '');
+      if (/^\d{10,15}$/.test(digits)) {
+        return digits;
+      }
+    }
+    return null;
+  }
+
+  private async resolveInstancePhone(
+    instanceId: string,
+    _instanceToken?: string,
+    fallbackPhone?: string | null,
+  ) {
+    if (fallbackPhone) {
+      return fallbackPhone;
+    }
+    try {
+      const info = await this.evolution.info(instanceId);
+      return this.extractPhoneFromUnknown(info.data);
+    } catch {
+      try {
+        const listed = await this.evolution.listInstances();
+        const match = listed.find((item) => item.id === instanceId);
+        return this.extractPhoneFromUnknown(match);
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  private statusPayload(params: {
+    status: WhatsAppInstanceStatus;
+    instanceName?: string | null;
+    instanceId?: string | null;
+    phone?: string | null;
+    qrcode?: string | null;
+    code?: string | null;
+  }) {
+    return {
+      status: params.status,
+      instanceName: params.instanceName ?? null,
+      instanceId: params.instanceId ?? null,
+      phone: params.phone ?? null,
+      qrcode: params.qrcode ?? null,
+      code: params.code ?? null,
+    };
+  }
+
   private instanceNameForUnit(unitSlug: string) {
-    return `unit-${unitSlug}`;
+    return `unit-${unitSlug}-${randomUUID().slice(0, 8)}`;
   }
 
   private webhookUrl() {
@@ -38,6 +133,38 @@ export class WhatsappService {
       url.searchParams.set('secret', secret);
     }
     return url.toString();
+  }
+
+  private setPending(pending: PendingPairing) {
+    const previous = this.pendingByUnitId.get(pending.unitId);
+    if (previous) {
+      this.pendingByEvolutionId.delete(previous.evolutionInstanceId);
+    }
+    this.pendingByUnitId.set(pending.unitId, pending);
+    this.pendingByEvolutionId.set(pending.evolutionInstanceId, pending);
+  }
+
+  private clearPending(unitId: string) {
+    const pending = this.pendingByUnitId.get(unitId);
+    if (!pending) {
+      return;
+    }
+    this.pendingByUnitId.delete(unitId);
+    this.pendingByEvolutionId.delete(pending.evolutionInstanceId);
+  }
+
+  private logQrCode(pending: PendingPairing) {
+    if (!pending.qrcode) {
+      this.logger.warn(
+        `QR Code ainda não disponível | unit=${pending.unitSlug} | instance=${pending.evolutionInstanceId}`,
+      );
+      return;
+    }
+
+    this.logger.log(
+      `QR Code gerado | unit=${pending.unitSlug} | instance=${pending.evolutionInstanceId}`,
+    );
+    this.logger.log(pending.qrcode);
   }
 
   private extractMessageBody(message: Record<string, unknown> | undefined) {
@@ -64,151 +191,403 @@ export class WhatsappService {
     return null;
   }
 
-  async getStatus(unitId: string) {
-    const instance = await this.prisma.whatsAppInstance.findFirst({
-      where: { unitId },
-    });
-
-    if (!instance) {
-      return {
-        status: WhatsAppInstanceStatus.disconnected,
-        instanceName: null,
-        instanceId: null,
-      };
-    }
-
-    try {
-      const remote = await this.evolution.status(instance.evolutionInstanceName);
-      const connected = Boolean(remote.data?.Connected);
-      const mapped = connected
-        ? WhatsAppInstanceStatus.connected
-        : instance.status === WhatsAppInstanceStatus.qr
-          ? WhatsAppInstanceStatus.qr
-          : WhatsAppInstanceStatus.disconnected;
-
-      if (mapped !== instance.status) {
-        await this.prisma.whatsAppInstance.update({
-          where: { id: instance.id },
-          data: { status: mapped },
-        });
-      }
-
-      return {
-        status: mapped,
-        instanceName: this.instanceNameForUnit(
-          (
-            await this.prisma.unit.findUniqueOrThrow({
-              where: { id: unitId },
-              select: { slug: true },
-            })
-          ).slug,
-        ),
-        instanceId: instance.evolutionInstanceName,
-      };
-    } catch {
-      return {
-        status: instance.status,
-        instanceName: null,
-        instanceId: instance.evolutionInstanceName,
-      };
-    }
-  }
-
-  async connect(unitId: string, unitSlug: string) {
+  private async createRemoteCredentials(unitSlug: string) {
     const instanceName = this.instanceNameForUnit(unitSlug);
-    let instance = await this.prisma.whatsAppInstance.findFirst({
-      where: { unitId },
-    });
-
-    if (!instance) {
-      const created = await this.evolution.createInstance(instanceName);
-      const evolutionId = created.data?.id;
-      if (!evolutionId) {
-        throw new NotFoundException();
-      }
-
-      instance = await this.prisma.whatsAppInstance.create({
-        data: {
-          unitId,
-          evolutionInstanceName: evolutionId,
-          status: WhatsAppInstanceStatus.disconnected,
-        },
-      });
-    }
-
-    await this.evolution.connect(instance.evolutionInstanceName, {
-      webhookUrl: this.webhookUrl(),
-      subscribe: ['MESSAGE', 'CONNECTION', 'QRCODE'],
-      immediate: true,
-    });
-
-    await this.prisma.whatsAppInstance.update({
-      where: { id: instance.id },
-      data: { status: WhatsAppInstanceStatus.qr },
-    });
-
-    const refreshed = await this.prisma.whatsAppInstance.findUniqueOrThrow({
-      where: { id: instance.id },
-    });
+    const evolutionToken = randomUUID();
+    const created = await this.evolution.createInstance(
+      instanceName,
+      evolutionToken,
+    );
+    const evolutionInstanceId =
+      created.data?.id || created.data?.token || evolutionToken;
+    const savedToken = created.data?.token || evolutionToken;
 
     return {
-      status: WhatsAppInstanceStatus.qr,
       instanceName,
-      instanceId: refreshed.evolutionInstanceName,
-      qrcode: refreshed.lastQrCode,
-      code: null,
+      evolutionInstanceId,
+      evolutionToken: savedToken,
     };
   }
 
-  async getQr(unitId: string) {
-    const instance = await this.prisma.whatsAppInstance.findFirst({
-      where: { unitId },
-    });
-
-    if (!instance) {
-      throw new NotFoundException();
+  private async promotePendingIfLoggedIn(unitId: string) {
+    const pending = this.pendingByUnitId.get(unitId);
+    if (!pending) {
+      return null;
     }
 
-    const state = await this.getStatus(unitId);
-    if (state.status === WhatsAppInstanceStatus.connected) {
+    try {
+      const remote = await this.evolution.status(
+        pending.evolutionInstanceId,
+        pending.evolutionToken,
+      );
+      if (remote.data?.LoggedIn === true) {
+        if (!pending.phone) {
+          pending.phone = await this.resolveInstancePhone(
+            pending.evolutionInstanceId,
+            pending.evolutionToken,
+          );
+          this.setPending(pending);
+        }
+        await this.persistPairedInstance(pending);
+        return this.statusPayload({
+          status: WhatsAppInstanceStatus.connected,
+          instanceName: pending.instanceName,
+          instanceId: pending.evolutionInstanceId,
+          phone: pending.phone,
+        });
+      }
+    } catch {
+      // keep waiting for QR / webhook
+    }
+
+    return this.statusPayload({
+      status: WhatsAppInstanceStatus.qr,
+      instanceName: pending.instanceName,
+      instanceId: pending.evolutionInstanceId,
+      phone: pending.phone,
+      qrcode: pending.qrcode,
+    });
+  }
+
+  async getStatus(unitId: string) {
+    const pendingStatus = await this.promotePendingIfLoggedIn(unitId);
+    if (pendingStatus) {
+      return pendingStatus;
+    }
+
+    const instance = await this.prisma.whatsAppInstance.findFirst({
+      where: { unitId },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    if (!instance?.evolutionToken) {
+      return this.statusPayload({
+        status: WhatsAppInstanceStatus.disconnected,
+      });
+    }
+
+    try {
+      const remote = await this.evolution.status(
+        instance.evolutionInstanceName,
+        instance.evolutionToken,
+      );
+      if (remote.data?.LoggedIn === true) {
+        let phone = instance.phone;
+        if (!phone) {
+          phone = await this.resolveInstancePhone(
+            instance.evolutionInstanceName,
+            instance.evolutionToken,
+          );
+        }
+
+        if (
+          instance.status !== WhatsAppInstanceStatus.connected ||
+          (phone && phone !== instance.phone)
+        ) {
+          await this.prisma.whatsAppInstance.update({
+            where: { id: instance.id },
+            data: {
+              status: WhatsAppInstanceStatus.connected,
+              lastQrCode: null,
+              ...(phone ? { phone } : {}),
+            },
+          });
+        }
+
+        return this.statusPayload({
+          status: WhatsAppInstanceStatus.connected,
+          instanceName: instance.evolutionInstanceName,
+          instanceId: instance.evolutionInstanceName,
+          phone,
+        });
+      }
+
+      if (instance.status !== WhatsAppInstanceStatus.disconnected) {
+        await this.prisma.whatsAppInstance.update({
+          where: { id: instance.id },
+          data: {
+            status: WhatsAppInstanceStatus.disconnected,
+            lastQrCode: null,
+          },
+        });
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Falha ao consultar status na Evolution | instance=${instance.evolutionInstanceName} | ${error instanceof Error ? error.message : error}`,
+      );
+      if (instance.status === WhatsAppInstanceStatus.connected) {
+        return this.statusPayload({
+          status: WhatsAppInstanceStatus.connected,
+          instanceName: instance.evolutionInstanceName,
+          instanceId: instance.evolutionInstanceName,
+          phone: instance.phone,
+        });
+      }
+    }
+
+    return this.statusPayload({
+      status: WhatsAppInstanceStatus.disconnected,
+      instanceId: instance.evolutionInstanceName,
+    });
+  }
+
+  async connect(unitId: string, unitSlug: string) {
+    const current = await this.getStatus(unitId);
+    if (current.status === WhatsAppInstanceStatus.connected) {
       return {
-        status: WhatsAppInstanceStatus.connected,
-        instanceName: state.instanceName,
-        instanceId: instance.evolutionInstanceName,
+        ...current,
         qrcode: null,
         code: null,
       };
     }
 
-    if (!instance.lastQrCode) {
-      await this.evolution.connect(instance.evolutionInstanceName, {
+    await this.cancelPendingRemote(unitId);
+
+    const saved = await this.prisma.whatsAppInstance.findFirst({
+      where: { unitId },
+    });
+
+    let credentials: {
+      instanceName: string;
+      evolutionInstanceId: string;
+      evolutionToken: string;
+    };
+
+    if (saved?.evolutionToken) {
+      credentials = {
+        instanceName: saved.evolutionInstanceName,
+        evolutionInstanceId: saved.evolutionInstanceName,
+        evolutionToken: saved.evolutionToken,
+      };
+    } else {
+      if (saved) {
+        await this.prisma.whatsAppInstance.delete({ where: { id: saved.id } });
+      }
+      credentials = await this.createRemoteCredentials(unitSlug);
+    }
+
+    this.setPending({
+      unitId,
+      unitSlug,
+      instanceName: credentials.instanceName,
+      evolutionInstanceId: credentials.evolutionInstanceId,
+      evolutionToken: credentials.evolutionToken,
+      qrcode: null,
+      phone: null,
+    });
+
+    await this.evolution.connect(
+      credentials.evolutionInstanceId,
+      credentials.evolutionToken,
+      {
         webhookUrl: this.webhookUrl(),
         subscribe: ['MESSAGE', 'CONNECTION', 'QRCODE'],
         immediate: true,
-      });
+      },
+    );
+
+    const pending = this.pendingByUnitId.get(unitId);
+    this.logQrCode(
+      pending || {
+        unitId,
+        unitSlug,
+        instanceName: credentials.instanceName,
+        evolutionInstanceId: credentials.evolutionInstanceId,
+        evolutionToken: credentials.evolutionToken,
+        qrcode: null,
+        phone: null,
+      },
+    );
+
+    return this.statusPayload({
+      status: WhatsAppInstanceStatus.qr,
+      instanceName: credentials.instanceName,
+      instanceId: credentials.evolutionInstanceId,
+      qrcode: pending?.qrcode || null,
+    });
+  }
+
+  async getQr(unitId: string) {
+    const pendingStatus = await this.promotePendingIfLoggedIn(unitId);
+    if (pendingStatus) {
+      if (pendingStatus.status === WhatsAppInstanceStatus.connected) {
+        return {
+          ...pendingStatus,
+          qrcode: null,
+          code: null,
+        };
+      }
+      return {
+        status: WhatsAppInstanceStatus.qr,
+        instanceName: pendingStatus.instanceName,
+        instanceId: pendingStatus.instanceId,
+        qrcode: pendingStatus.qrcode || null,
+        code: null,
+      };
+    }
+
+    const status = await this.getStatus(unitId);
+    return {
+      ...status,
+      qrcode: null,
+      code: null,
+    };
+  }
+
+  async cancelPairing(unitId: string) {
+    await this.cancelPendingRemote(unitId);
+
+    await this.prisma.whatsAppInstance.deleteMany({
+      where: {
+        unitId,
+        status: { not: WhatsAppInstanceStatus.connected },
+      },
+    });
+
+    return this.getStatus(unitId);
+  }
+
+  async disconnectAndDelete(unitId: string) {
+    const pending = this.pendingByUnitId.get(unitId);
+    if (pending) {
+      try {
+        await this.evolution.deleteInstance(
+          pending.evolutionInstanceId,
+          pending.evolutionToken,
+        );
+      } catch {
+        // ignore remote cleanup errors
+      }
+      this.clearPending(unitId);
+    }
+
+    const instances = await this.prisma.whatsAppInstance.findMany({
+      where: { unitId },
+    });
+
+    for (const instance of instances) {
+      try {
+        await this.evolution.deleteInstance(
+          instance.evolutionInstanceName,
+          instance.evolutionToken || undefined,
+        );
+      } catch {
+        // ignore remote cleanup errors
+      }
+    }
+
+    await this.prisma.whatsAppInstance.deleteMany({ where: { unitId } });
+
+    return this.statusPayload({
+      status: WhatsAppInstanceStatus.disconnected,
+    });
+  }
+
+  private async cancelPendingRemote(unitId: string) {
+    const pending = this.pendingByUnitId.get(unitId);
+    if (!pending) {
+      return;
+    }
+
+    try {
+      await this.evolution.deleteInstance(
+        pending.evolutionInstanceId,
+        pending.evolutionToken,
+      );
+    } catch {
+      try {
+        await this.evolution.disconnect(
+          pending.evolutionInstanceId,
+          pending.evolutionToken,
+        );
+      } catch {
+        // ignore
+      }
+    }
+
+    this.clearPending(unitId);
+  }
+
+  private async persistPairedInstance(pending: PendingPairing) {
+    const phone =
+      pending.phone ||
+      (await this.resolveInstancePhone(
+        pending.evolutionInstanceId,
+        pending.evolutionToken,
+      ));
+
+    const existing = await this.prisma.whatsAppInstance.findFirst({
+      where: { unitId: pending.unitId },
+    });
+
+    if (existing) {
       await this.prisma.whatsAppInstance.update({
-        where: { id: instance.id },
-        data: { status: WhatsAppInstanceStatus.qr },
+        where: { id: existing.id },
+        data: {
+          evolutionInstanceName: pending.evolutionInstanceId,
+          evolutionToken: pending.evolutionToken,
+          phone,
+          status: WhatsAppInstanceStatus.connected,
+          lastQrCode: null,
+        },
+      });
+    } else {
+      await this.prisma.whatsAppInstance.create({
+        data: {
+          unitId: pending.unitId,
+          evolutionInstanceName: pending.evolutionInstanceId,
+          evolutionToken: pending.evolutionToken,
+          phone,
+          status: WhatsAppInstanceStatus.connected,
+          lastQrCode: null,
+        },
       });
     }
 
-    const refreshed = await this.prisma.whatsAppInstance.findUniqueOrThrow({
-      where: { id: instance.id },
-    });
-
-    return {
-      status: WhatsAppInstanceStatus.qr,
-      instanceName: state.instanceName,
-      instanceId: refreshed.evolutionInstanceName,
-      qrcode: refreshed.lastQrCode,
-      code: null,
-    };
+    this.clearPending(pending.unitId);
   }
 
   async handleWebhook(body: EvolutionGoWebhookBody) {
     const event = body.event || '';
     const instanceId = body.instanceId;
     if (!instanceId) {
+      return { ok: true };
+    }
+
+    const pending = this.pendingByEvolutionId.get(instanceId);
+    const webhookPhone = this.extractPhoneFromUnknown(body.data);
+
+    if (event === EvolutionGoEvent.QRCode && pending) {
+      const data = body.data as { qrcode?: string; code?: string } | undefined;
+      pending.qrcode = data?.qrcode || null;
+      this.setPending(pending);
+      this.logQrCode(pending);
+      return { ok: true };
+    }
+
+    if (
+      pending &&
+      (EVOLUTION_GO_CONNECTED_EVENTS.has(event) ||
+        (event === EvolutionGoEvent.Connected &&
+          (body.data as { LoggedIn?: boolean } | undefined)?.LoggedIn === true))
+    ) {
+      if (webhookPhone) {
+        pending.phone = webhookPhone;
+        this.setPending(pending);
+      }
+      await this.persistPairedInstance(pending);
+      return { ok: true };
+    }
+
+    if (event === EvolutionGoEvent.Connected && pending) {
+      const data = body.data as { LoggedIn?: boolean } | undefined;
+      if (data?.LoggedIn === true) {
+        if (webhookPhone) {
+          pending.phone = webhookPhone;
+          this.setPending(pending);
+        }
+        await this.persistPairedInstance(pending);
+      }
       return { ok: true };
     }
 
@@ -220,26 +599,30 @@ export class WhatsappService {
       return { ok: true };
     }
 
-    if (event === EvolutionGoEvent.QRCode) {
-      const data = body.data as { qrcode?: string; code?: string } | undefined;
-      await this.prisma.whatsAppInstance.update({
-        where: { id: instance.id },
-        data: {
-          status: WhatsAppInstanceStatus.qr,
-          lastQrCode: data?.qrcode || null,
-        },
-      });
-      return { ok: true };
-    }
-
     if (EVOLUTION_GO_CONNECTED_EVENTS.has(event)) {
       await this.prisma.whatsAppInstance.update({
         where: { id: instance.id },
         data: {
           status: WhatsAppInstanceStatus.connected,
           lastQrCode: null,
+          ...(webhookPhone ? { phone: webhookPhone } : {}),
         },
       });
+      return { ok: true };
+    }
+
+    if (event === EvolutionGoEvent.Connected) {
+      const data = body.data as { LoggedIn?: boolean } | undefined;
+      if (data?.LoggedIn === true) {
+        await this.prisma.whatsAppInstance.update({
+          where: { id: instance.id },
+          data: {
+            status: WhatsAppInstanceStatus.connected,
+            lastQrCode: null,
+            ...(webhookPhone ? { phone: webhookPhone } : {}),
+          },
+        });
+      }
       return { ok: true };
     }
 
@@ -252,11 +635,7 @@ export class WhatsappService {
     }
 
     if (event === EvolutionGoEvent.Message) {
-      await this.persistInboundMessage(
-        instance.unitId,
-        instance.evolutionInstanceName,
-        body.data,
-      );
+      await this.persistInboundMessage(instance, body.data);
     }
 
     return { ok: true };
@@ -267,8 +646,11 @@ export class WhatsappService {
   }
 
   private async persistInboundMessage(
-    unitId: string,
-    evolutionInstanceId: string,
+    instance: {
+      unitId: string;
+      evolutionInstanceName: string;
+      evolutionToken: string | null;
+    },
     data: unknown,
   ) {
     const payload = data as
@@ -303,7 +685,7 @@ export class WhatsappService {
     const conversation = await this.prisma.conversation.upsert({
       where: {
         unitId_remoteJid: {
-          unitId,
+          unitId: instance.unitId,
           remoteJid,
         },
       },
@@ -313,7 +695,7 @@ export class WhatsappService {
         updatedAt: new Date(),
       },
       create: {
-        unitId,
+        unitId: instance.unitId,
         remoteJid,
         phone,
         contactName: payload.Info.PushName || null,
@@ -322,7 +704,7 @@ export class WhatsappService {
 
     if (payload.Info.ID) {
       const existing = await this.prisma.message.findFirst({
-        where: { unitId, externalId: payload.Info.ID },
+        where: { unitId: instance.unitId, externalId: payload.Info.ID },
         select: { id: true },
       });
       if (existing) {
@@ -333,17 +715,18 @@ export class WhatsappService {
     await this.prisma.message.create({
       data: {
         conversationId: conversation.id,
-        unitId,
+        unitId: instance.unitId,
         direction: 'inbound',
         body,
         externalId: payload.Info.ID || null,
       },
     });
 
-    if (this.isAutoReplyTrigger(body) && phone) {
+    if (this.isAutoReplyTrigger(body) && phone && instance.evolutionToken) {
       await this.sendAutoReply({
-        unitId,
-        evolutionInstanceId,
+        unitId: instance.unitId,
+        evolutionInstanceId: instance.evolutionInstanceName,
+        evolutionToken: instance.evolutionToken,
         conversationId: conversation.id,
         number: phone,
       });
@@ -353,12 +736,14 @@ export class WhatsappService {
   private async sendAutoReply(params: {
     unitId: string;
     evolutionInstanceId: string;
+    evolutionToken: string;
     conversationId: string;
     number: string;
   }) {
     try {
       const sent = await this.evolution.sendText(
         params.evolutionInstanceId,
+        params.evolutionToken,
         params.number,
         AUTO_REPLY_TEXT,
       );

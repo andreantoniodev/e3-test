@@ -8,7 +8,6 @@ export enum EvolutionGoEvent {
 }
 
 export const EVOLUTION_GO_CONNECTED_EVENTS: ReadonlySet<string> = new Set([
-  EvolutionGoEvent.Connected,
   EvolutionGoEvent.PairSuccess,
   EvolutionGoEvent.QRSuccess,
 ]);

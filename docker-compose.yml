@@ -79,6 +79,8 @@ services:
       PORT: 3000
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/mini_crm?schema=public
       EVOLUTION_API_URL: http://evolution-go:8080
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-change-me}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-change-me}
       PUBLIC_API_URL: http://api:3000
       RUN_SEED: ${RUN_SEED:-true}
     depends_on:

@@ -5,6 +5,7 @@ type EvolutionGoRequestOptions = {
   body?: unknown;
   path: string;
   instanceId?: string;
+  instanceToken?: string;
 };
 
 export type EvolutionGoCreateResponse = {
@@ -27,23 +28,52 @@ export type EvolutionGoStatusResponse = {
   message?: string;
 };
 
+export type EvolutionGoInfoResponse = {
+  data?: {
+    id?: string;
+    name?: string;
+    jid?: string;
+    Jid?: string;
+    phone?: string;
+    connected?: boolean;
+    Connected?: boolean;
+  };
+  message?: string;
+};
+
+export type EvolutionGoInstanceListItem = {
+  id?: string;
+  name?: string;
+  jid?: string;
+  Jid?: string;
+  phone?: string;
+  connected?: boolean;
+  Connected?: boolean;
+  token?: string;
+};
+
 @Injectable()
 export class EvolutionClient {
   private readonly baseUrl = (
     process.env.EVOLUTION_API_URL || 'http://localhost:8080'
   ).replace(/\/$/, '');
-  private readonly apiKey = process.env.EVOLUTION_API_KEY || '';
+  private readonly globalApiKey = process.env.EVOLUTION_API_KEY || '';
 
   async request<T = unknown>({
     path,
     method = 'GET',
     body,
     instanceId,
+    instanceToken,
   }: EvolutionGoRequestOptions): Promise<T> {
     const headers: Record<string, string> = {
-      apikey: this.apiKey,
+      apikey: instanceToken || this.globalApiKey,
       'Content-Type': 'application/json',
     };
+
+    if (instanceToken) {
+      headers.token = instanceToken;
+    }
 
     if (instanceId) {
       headers.instanceId = instanceId;
@@ -76,16 +106,17 @@ export class EvolutionClient {
     return data as T;
   }
 
-  createInstance(name: string) {
+  createInstance(name: string, token: string) {
     return this.request<EvolutionGoCreateResponse>({
       path: '/instance/create',
       method: 'POST',
-      body: { name },
+      body: { name, token },
     });
   }
 
   connect(
     instanceId: string,
+    instanceToken: string,
     payload: {
       webhookUrl: string;
       subscribe: string[];
@@ -96,18 +127,69 @@ export class EvolutionClient {
       path: '/instance/connect',
       method: 'POST',
       instanceId,
+      instanceToken,
       body: payload,
     });
   }
 
-  status(instanceId: string) {
+  status(instanceId: string, instanceToken: string) {
     return this.request<EvolutionGoStatusResponse>({
       path: '/instance/status',
+      instanceId,
+      instanceToken,
+    });
+  }
+
+  info(instanceId: string) {
+    // /instance/info exige GLOBAL_API_KEY (token da instância retorna 401).
+    return this.request<EvolutionGoInfoResponse>({
+      path: `/instance/info/${encodeURIComponent(instanceId)}`,
       instanceId,
     });
   }
 
-  sendText(instanceId: string, number: string, text: string) {
+  async listInstances() {
+    const response = await this.request<{ data?: EvolutionGoInstanceListItem[] } | EvolutionGoInstanceListItem[]>({
+      path: '/instance/all',
+    });
+    if (Array.isArray(response)) {
+      return response;
+    }
+    return response.data || [];
+  }
+
+  disconnect(instanceId: string, instanceToken: string) {
+    return this.request({
+      path: '/instance/disconnect',
+      method: 'POST',
+      instanceId,
+      instanceToken,
+    });
+  }
+
+  async deleteInstance(instanceId: string, instanceToken?: string) {
+    const path = `/instance/delete/${encodeURIComponent(instanceId)}`;
+    try {
+      return await this.request({
+        path,
+        method: 'DELETE',
+        instanceId,
+        instanceToken,
+      });
+    } catch (error) {
+      if (!instanceToken) {
+        throw error;
+      }
+      // Fallback com a GLOBAL_API_KEY (algumas rotas admin exigem isso).
+      return this.request({
+        path,
+        method: 'DELETE',
+        instanceId,
+      });
+    }
+  }
+
+  sendText(instanceId: string, instanceToken: string, number: string, text: string) {
     return this.request<{
       data?: { Info?: { ID?: string } };
       message?: string;
@@ -115,6 +197,7 @@ export class EvolutionClient {
       path: '/send/text',
       method: 'POST',
       instanceId,
+      instanceToken,
       body: { number, text },
     });
   }

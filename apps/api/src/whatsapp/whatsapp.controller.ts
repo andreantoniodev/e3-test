@@ -14,6 +14,16 @@ export class WhatsappController {
     return this.whatsappService.connect(user.unitId, user.unit.slug);
   }
 
+  @Post('disconnect')
+  disconnect(@CurrentUser() user: AuthUser) {
+    return this.whatsappService.disconnectAndDelete(user.unitId);
+  }
+
+  @Post('cancel')
+  cancel(@CurrentUser() user: AuthUser) {
+    return this.whatsappService.cancelPairing(user.unitId);
+  }
+
   @Get('qr')
   qr(@CurrentUser() user: AuthUser) {
     return this.whatsappService.getQr(user.unitId);
