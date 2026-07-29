@@ -19,6 +19,8 @@ type EvolutionApiWebhookBody = {
   event?: string;
   instance?: string;
   data?: unknown;
+  progress?: number | string;
+  isLatest?: boolean;
 };
 
 type PendingPairing = {
@@ -30,11 +32,20 @@ type PendingPairing = {
   phone: string | null;
 };
 
+type HistorySyncState = {
+  syncing: boolean;
+  progress: number | null;
+  updatedAt: number;
+};
+
+const HISTORY_SYNC_IDLE_MS = 45_000;
+
 @Injectable()
 export class WhatsappService {
   private readonly logger = new Logger(WhatsappService.name);
   private readonly pendingByUnitId = new Map<string, PendingPairing>();
   private readonly pendingByInstanceName = new Map<string, PendingPairing>();
+  private readonly syncByInstanceName = new Map<string, HistorySyncState>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -95,6 +106,7 @@ export class WhatsappService {
     qrcode?: string | null;
     code?: string | null;
   }) {
+    const sync = this.getHistorySyncState(params.instanceName ?? null);
     return {
       status: params.status,
       instanceName: params.instanceName ?? null,
@@ -102,7 +114,78 @@ export class WhatsappService {
       phone: params.phone ?? null,
       qrcode: params.qrcode ?? null,
       code: params.code ?? null,
+      syncing: sync.syncing,
     };
+  }
+
+  private getHistorySyncState(instanceName: string | null | undefined) {
+    if (!instanceName) {
+      return { syncing: false, progress: null as number | null };
+    }
+
+    const current = this.syncByInstanceName.get(instanceName);
+    if (!current) {
+      return { syncing: false, progress: null as number | null };
+    }
+
+    if (
+      current.syncing &&
+      Date.now() - current.updatedAt > HISTORY_SYNC_IDLE_MS
+    ) {
+      const settled = {
+        syncing: false,
+        progress: current.progress ?? 100,
+        updatedAt: Date.now(),
+      };
+      this.syncByInstanceName.set(instanceName, settled);
+      return { syncing: false, progress: settled.progress };
+    }
+
+    return { syncing: current.syncing, progress: current.progress };
+  }
+
+  private markHistorySyncStarted(instanceName: string) {
+    this.syncByInstanceName.set(instanceName, {
+      syncing: true,
+      progress: 0,
+      updatedAt: Date.now(),
+    });
+  }
+
+  private updateHistorySyncProgress(
+    instanceName: string,
+    progress: number | null,
+    isLatest?: boolean,
+  ) {
+    const previous = this.syncByInstanceName.get(instanceName);
+    const nextProgress =
+      progress ?? previous?.progress ?? (isLatest ? 100 : null);
+    const done =
+      isLatest === true ||
+      (typeof nextProgress === 'number' && nextProgress >= 100);
+
+    this.syncByInstanceName.set(instanceName, {
+      syncing: !done,
+      progress: nextProgress,
+      updatedAt: Date.now(),
+    });
+  }
+
+  private clearHistorySync(instanceName: string) {
+    this.syncByInstanceName.delete(instanceName);
+  }
+
+  private parseSyncProgress(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return Math.max(0, Math.min(100, Math.round(value)));
+    }
+    if (typeof value === 'string' && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return Math.max(0, Math.min(100, Math.round(parsed)));
+      }
+    }
+    return null;
   }
 
   private instanceNameForUnit(unitSlug: string) {
@@ -202,6 +285,14 @@ export class WhatsappService {
         `Falha ao configurar webhook | instance=${resolvedName} | ${
           error instanceof Error ? error.message : error
         }`,
+      );
+    }
+
+    try {
+      await this.evolution.setSettings(resolvedName, evolutionToken);
+    } catch (error) {
+      this.logger.warn(
+        `Falha ao configurar settings da instância | instance=${resolvedName} | ${describeEvolutionError(error)}`,
       );
     }
 
@@ -363,31 +454,17 @@ export class WhatsappService {
     });
   }
 
-  private async cleanupRemoteInstances(options?: {
-    keepNames?: Set<string>;
-  }) {
+  private async deleteRemoteInstance(
+    instanceName: string,
+    evolutionToken?: string | null,
+  ) {
     try {
-      const instances = await this.evolution.listInstances();
-      for (const item of instances) {
-        const name = this.evolution.instanceNameFrom(item);
-        if (!name) {
-          continue;
-        }
-        if (options?.keepNames?.has(name)) {
-          continue;
-        }
-        try {
-          await this.evolution.deleteInstance(name);
-        } catch (error) {
-          this.logRemoteCleanupError('excluir instância órfã', name, error);
-        }
-      }
-    } catch (error) {
-      this.logger.warn(
-        `Falha ao listar instâncias na Evolution API | ${
-          error instanceof Error ? error.message : error
-        }`,
+      await this.evolution.deleteInstance(
+        instanceName,
+        evolutionToken || undefined,
       );
+    } catch (error) {
+      this.logRemoteCleanupError('excluir instância', instanceName, error);
     }
   }
 
@@ -408,10 +485,13 @@ export class WhatsappService {
     });
 
     if (saved) {
+      this.clearHistorySync(saved.evolutionInstanceName);
+      await this.deleteRemoteInstance(
+        saved.evolutionInstanceName,
+        saved.evolutionToken,
+      );
       await this.prisma.whatsAppInstance.delete({ where: { id: saved.id } });
     }
-
-    await this.cleanupRemoteInstances();
 
     const credentials = await this.createRemoteCredentials(unitSlug);
     const qrcode = await this.ensureQrcode(
@@ -515,6 +595,7 @@ export class WhatsappService {
   async disconnectAndDelete(unitId: string) {
     const pending = this.pendingByUnitId.get(unitId);
     if (pending) {
+      this.clearHistorySync(pending.instanceName);
       try {
         await this.evolution.deleteInstance(
           pending.instanceName,
@@ -535,6 +616,7 @@ export class WhatsappService {
     });
 
     for (const instance of instances) {
+      this.clearHistorySync(instance.evolutionInstanceName);
       try {
         await this.evolution.deleteInstance(
           instance.evolutionInstanceName,
@@ -664,6 +746,7 @@ export class WhatsappService {
             pending.phone = webhookPhone;
             this.setPending(pending);
           }
+          this.markHistorySyncStarted(instanceName);
           await this.persistPairedInstance(pending);
           return { ok: true };
         }
@@ -672,6 +755,7 @@ export class WhatsappService {
           where: { evolutionInstanceName: instanceName },
         });
         if (instance) {
+          this.markHistorySyncStarted(instanceName);
           await this.prisma.whatsAppInstance.update({
             where: { id: instance.id },
             data: {
@@ -685,6 +769,7 @@ export class WhatsappService {
       }
 
       if (state === 'close') {
+        this.clearHistorySync(instanceName);
         const instance = await this.prisma.whatsAppInstance.findUnique({
           where: { evolutionInstanceName: instanceName },
         });
@@ -698,6 +783,15 @@ export class WhatsappService {
           });
         }
       }
+      return { ok: true };
+    }
+
+    if (event === EvolutionApiEvent.MessagesSet) {
+      this.updateHistorySyncProgress(
+        instanceName,
+        this.parseSyncProgress(body.progress),
+        body.isLatest === true,
+      );
       return { ok: true };
     }
 
