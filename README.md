@@ -227,7 +227,7 @@ Configuração já no repo:
 https://e3minicrm.firebaseapp.com
 https://e3minicrm.web.app
 
-No Coolify / API, use essa URL em `CORS_ORIGIN`.
+Na API em produção, use essa URL em `CORS_ORIGIN`.
 
 ### Pré-requisitos
 
@@ -236,7 +236,7 @@ firebase login
 ```
 
 Preencha `apps/web/.env` (ver `apps/web/.env.example`). Em produção, `VITE_API_URL` deve ser a
-URL HTTPS da API (Coolify), não `localhost`.
+URL HTTPS da API, não `localhost`.
 
 ### Build e deploy
 
