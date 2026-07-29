@@ -1,7 +1,9 @@
 import { DeleteOutlined, LogoutOutlined, SendOutlined } from '@ant-design/icons';
 import {
   Alert,
+  Avatar,
   Button,
+  Dropdown,
   Empty,
   Input,
   Popconfirm,
@@ -22,6 +24,29 @@ import {
   apiFetch,
 } from '../lib/api';
 import { getFriendlyError } from '../lib/errors';
+
+function userInitials(name?: string | null, email?: string | null) {
+  const source = (name || email || '?').trim();
+  const parts = source.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+  return source.slice(0, 2).toUpperCase();
+}
+
+function googlePhotoUrl(user: {
+  photoURL?: string | null;
+  providerData?: Array<{ providerId: string; photoURL?: string | null }>;
+} | null) {
+  if (!user) {
+    return null;
+  }
+  if (user.photoURL) {
+    return user.photoURL;
+  }
+  const google = user.providerData?.find((item) => item.providerId === 'google.com');
+  return google?.photoURL || null;
+}
 
 export function InboxPage() {
   const { user, logout } = useAuth();
@@ -304,6 +329,8 @@ export function InboxPage() {
     );
   }
 
+  const photoUrl = googlePhotoUrl(user);
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -316,19 +343,59 @@ export function InboxPage() {
             />
             <h1 className="app-header__title">Mini CRM</h1>
           </div>
-          <div className="app-header__meta">
-            {me.unit.name} · {user?.email || me.email}
-          </div>
         </div>
-        <Popconfirm
-          title="Sair da conta?"
-          description="Você precisará entrar com Google novamente."
-          okText="Sair"
-          cancelText="Cancelar"
-          onConfirm={() => void logout()}
+        <Dropdown
+          trigger={['click']}
+          placement="bottomRight"
+          dropdownRender={() => (
+            <div className="user-menu">
+              <div className="user-menu__identity">
+                <strong>{user?.displayName || me.name || 'Conta'}</strong>
+                <span>{user?.email || me.email}</span>
+              </div>
+              <Popconfirm
+                title="Sair da conta?"
+                description="Você precisará entrar com Google novamente."
+                okText="Sair"
+                cancelText="Cancelar"
+                placement="left"
+                onConfirm={() => void logout()}
+              >
+                <Button
+                  type="text"
+                  danger
+                  icon={<LogoutOutlined />}
+                  block
+                  className="user-menu__logout"
+                >
+                  Sair
+                </Button>
+              </Popconfirm>
+            </div>
+          )}
         >
-          <Button icon={<LogoutOutlined />}>Sair</Button>
-        </Popconfirm>
+          <button
+            type="button"
+            className="user-avatar-trigger"
+            aria-label="Menu da conta"
+          >
+            <Avatar
+              size={40}
+              alt={user?.displayName || user?.email || 'Usuário'}
+              src={
+                photoUrl ? (
+                  <img
+                    src={photoUrl}
+                    alt={user?.displayName || user?.email || 'Usuário'}
+                    referrerPolicy="no-referrer"
+                  />
+                ) : undefined
+              }
+            >
+              {userInitials(user?.displayName, user?.email || me.email)}
+            </Avatar>
+          </button>
+        </Dropdown>
       </header>
 
       <div className="app-body">
@@ -336,18 +403,12 @@ export function InboxPage() {
           <WhatsAppPanel />
 
           <div>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: 10,
-              }}
-            >
-              <strong style={{ fontSize: '1rem' }}>Conversas</strong>
-              <span style={{ color: 'var(--muted)', fontSize: 12 }}>
-                {conversations.length}
-              </span>
+            <div className="inbox-section__header">
+              <div className="inbox-section__heading">
+                <strong className="inbox-section__title">Conversas</strong>
+                <span className="inbox-section__unit">{me.unit.name}</span>
+              </div>
+              <span className="inbox-section__count">{conversations.length}</span>
             </div>
 
             {loadingConversations ? (
