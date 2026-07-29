@@ -146,6 +146,22 @@ export class EvolutionClient {
     });
   }
 
+  setSettings(instanceName: string, instanceToken?: string) {
+    return this.request({
+      path: `/settings/set/${encodeURIComponent(instanceName)}`,
+      method: 'POST',
+      instanceToken,
+      body: {
+        rejectCall: false,
+        groupsIgnore: true,
+        alwaysOnline: false,
+        readMessages: false,
+        readStatus: false,
+        syncFullHistory: false,
+      },
+    });
+  }
+
   connect(instanceName: string, instanceToken?: string) {
     return this.request<EvolutionApiConnectResponse>({
       path: `/instance/connect/${encodeURIComponent(instanceName)}`,

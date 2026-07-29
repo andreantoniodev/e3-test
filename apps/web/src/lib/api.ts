@@ -135,4 +135,5 @@ export type WhatsappStatus = {
   phone?: string | null;
   qrcode?: string | null;
   code?: string | null;
+  syncing?: boolean;
 };
