@@ -47,11 +47,11 @@ services:
     image: evoapicloud/evolution-api:v2.3.7
     restart: unless-stopped
     expose:
-      - "8283"
+      - "8081"
     environment:
-      SERVICE_URL_EVOLUTION_API_8080: ${SERVICE_URL_EVOLUTION_API_8080}
-      SERVER_URL: ${SERVICE_URL_EVOLUTION_API_8080}
-      SERVER_PORT: 8080
+      SERVICE_URL_EVOLUTION_API_8081: ${SERVICE_URL_EVOLUTION_API_8081}
+      SERVER_URL: ${SERVICE_URL_EVOLUTION_API_8081}
+      SERVER_PORT: 8081
       AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
       DATABASE_ENABLED: "true"
       DATABASE_PROVIDER: postgresql
@@ -77,7 +77,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8081/ || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 12
@@ -98,7 +98,7 @@ services:
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID}
       FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL}
       FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY}
-      EVOLUTION_API_URL: http://evolution-api:8080
+      EVOLUTION_API_URL: http://evolution-api:8081
       EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET}
       ADMIN_SECRET: ${ADMIN_SECRET}
