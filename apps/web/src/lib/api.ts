@@ -79,6 +79,7 @@ export type WhatsappStatus = {
   status: WhatsAppInstanceStatus;
   instanceName: string | null;
   instanceId?: string | null;
+  phone?: string | null;
   qrcode?: string | null;
   code?: string | null;
 };

@@ -1,17 +1,15 @@
-import { LogoutOutlined } from '@ant-design/icons';
+import { DeleteOutlined, LogoutOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
   Empty,
-  Layout,
-  List,
+  Popconfirm,
   Space,
   Spin,
-  Typography,
-  theme,
+  message,
 } from 'antd';
 import dayjs from 'dayjs';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { WhatsAppPanel } from '../components/WhatsAppPanel';
 import {
@@ -23,11 +21,8 @@ import {
 } from '../lib/api';
 import { getFriendlyError } from '../lib/errors';
 
-const { Header, Sider, Content } = Layout;
-
 export function InboxPage() {
   const { user, logout } = useAuth();
-  const { token } = theme.useToken();
   const [me, setMe] = useState<MeResponse | null>(null);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -35,18 +30,34 @@ export function InboxPage() {
   const [loadingMe, setLoadingMe] = useState(true);
   const [loadingConversations, setLoadingConversations] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const loadConversations = useCallback(async () => {
-    setLoadingConversations(true);
+  const selectedConversation = useMemo(
+    () => conversations.find((item) => item.id === selectedId) ?? null,
+    [conversations, selectedId],
+  );
+
+  const loadConversations = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) {
+      setLoadingConversations(true);
+    }
     try {
       const data = await apiFetch<ConversationItem[]>('/conversations');
       setConversations(data);
       setError(null);
+      setSelectedId((current) => {
+        if (current && data.some((item) => item.id === current)) {
+          return current;
+        }
+        return null;
+      });
     } catch (err) {
       setError(getFriendlyError(err, 'Erro ao listar conversas.'));
     } finally {
-      setLoadingConversations(false);
+      if (!opts?.silent) {
+        setLoadingConversations(false);
+      }
     }
   }, []);
 
@@ -72,7 +83,7 @@ export function InboxPage() {
     }
     void loadConversations();
     const id = window.setInterval(() => {
-      void loadConversations();
+      void loadConversations({ silent: true });
     }, 8000);
     return () => window.clearInterval(id);
   }, [me, loadConversations]);
@@ -96,6 +107,26 @@ export function InboxPage() {
       }
     })();
   }, [selectedId]);
+
+  async function handleDeleteConversation(conversationId: string) {
+    setDeletingId(conversationId);
+    try {
+      await apiFetch<void>(`/conversations/${conversationId}`, {
+        method: 'DELETE',
+      });
+      setConversations((prev) => prev.filter((item) => item.id !== conversationId));
+      if (selectedId === conversationId) {
+        setSelectedId(null);
+        setMessages([]);
+      }
+      message.success('Conversa excluída');
+      setError(null);
+    } catch (err) {
+      setError(getFriendlyError(err, 'Não foi possível excluir a conversa.'));
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   if (loadingMe) {
     return (
@@ -125,140 +156,206 @@ export function InboxPage() {
               'A API não validou seu login. Confira o Firebase Admin e o seed de e-mails.'
             }
           />
-          <Button icon={<LogoutOutlined />} onClick={() => void logout()} block>
-            Sair e tentar outro login
-          </Button>
+          <Popconfirm
+            title="Sair da conta?"
+            description="Você precisará entrar com Google novamente."
+            okText="Sair"
+            cancelText="Cancelar"
+            onConfirm={() => void logout()}
+          >
+            <Button icon={<LogoutOutlined />} block>
+              Sair e tentar outro login
+            </Button>
+          </Popconfirm>
         </Space>
       </div>
     );
   }
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          background: token.colorBgContainer,
-          borderBottom: `1px solid ${token.colorBorderSecondary}`,
-          paddingInline: 24,
-        }}
-      >
-        <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>
-            Mini-CRM WhatsApp E3
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            {me.unit.name} · {user?.email}
-          </Typography.Text>
-        </div>
-        <Button icon={<LogoutOutlined />} onClick={() => void logout()}>
-          Sair
-        </Button>
-      </Header>
-      <Layout>
-        <Sider
-          width={320}
-          theme="light"
-          style={{
-            borderRight: `1px solid ${token.colorBorderSecondary}`,
-            padding: 16,
-            overflow: 'auto',
-          }}
-        >
-          <WhatsAppPanel />
-          <Typography.Title level={5} style={{ marginTop: 24 }}>
-            Conversas
-          </Typography.Title>
-          {loadingConversations ? (
-            <Spin />
-          ) : conversations.length === 0 ? (
-            <Empty description="Nenhuma conversa" />
-          ) : (
-            <List
-              dataSource={conversations}
-              renderItem={(item) => {
-                const last = item.messages[0];
-                return (
-                  <List.Item
-                    style={{
-                      cursor: 'pointer',
-                      background:
-                        selectedId === item.id ? token.colorFillSecondary : undefined,
-                      paddingInline: 8,
-                      borderRadius: 8,
-                    }}
-                    onClick={() => setSelectedId(item.id)}
-                  >
-                    <List.Item.Meta
-                      title={item.contactName || item.phone || item.remoteJid}
-                      description={
-                        <span>
-                          {last?.body || 'Sem mensagens'}
-                          <br />
-                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                            {dayjs(item.updatedAt).format('DD/MM HH:mm')}
-                          </Typography.Text>
-                        </span>
-                      }
-                    />
-                  </List.Item>
-                );
-              }}
+    <div className="app-shell">
+      <header className="app-header">
+        <div className="app-header__brand">
+          <div className="app-header__brand-row">
+            <img
+              className="app-header__logo"
+              src="https://lpw.e3digitalagencia.com/wp-content/uploads/2026/03/1.svg"
+              alt="E3 Digital"
             />
-          )}
-        </Sider>
-        <Content style={{ padding: 24 }}>
+            <h1 className="app-header__title">Mini CRM</h1>
+          </div>
+          <div className="app-header__meta">
+            {me.unit.name} · {user?.email || me.email}
+          </div>
+        </div>
+        <Popconfirm
+          title="Sair da conta?"
+          description="Você precisará entrar com Google novamente."
+          okText="Sair"
+          cancelText="Cancelar"
+          onConfirm={() => void logout()}
+        >
+          <Button icon={<LogoutOutlined />}>Sair</Button>
+        </Popconfirm>
+      </header>
+
+      <div className="app-body">
+        <aside className="app-sidebar">
+          <WhatsAppPanel />
+
+          <div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 10,
+              }}
+            >
+              <strong style={{ fontSize: '1rem' }}>Conversas</strong>
+              <span style={{ color: 'var(--muted)', fontSize: 12 }}>
+                {conversations.length}
+              </span>
+            </div>
+
+            {loadingConversations ? (
+              <div style={{ padding: 24, textAlign: 'center' }}>
+                <Spin />
+              </div>
+            ) : conversations.length === 0 ? (
+              <Empty description="Nenhuma conversa" />
+            ) : (
+              <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                {conversations.map((item) => {
+                  const last = item.messages[0];
+                  const title = item.contactName || item.phone || item.remoteJid;
+                  return (
+                    <div
+                      key={item.id}
+                      className={`conversation-item${selectedId === item.id ? ' is-active' : ''}`}
+                      onClick={() => setSelectedId(item.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          setSelectedId(item.id);
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <div className="conversation-item__body">
+                        <div className="conversation-item__title">{title}</div>
+                        <div className="conversation-item__preview">
+                          {last?.body || 'Sem mensagens'}
+                        </div>
+                        <div className="conversation-item__time">
+                          {dayjs(item.updatedAt).format('DD/MM HH:mm')}
+                        </div>
+                      </div>
+                      <Popconfirm
+                        title="Excluir conversa?"
+                        description="As mensagens desta conversa serão removidas."
+                        okText="Excluir"
+                        cancelText="Cancelar"
+                        okButtonProps={{ danger: true }}
+                        onConfirm={(event) => {
+                          event?.stopPropagation();
+                          void handleDeleteConversation(item.id);
+                        }}
+                        onCancel={(event) => event?.stopPropagation()}
+                      >
+                        <Button
+                          type="text"
+                          danger
+                          icon={<DeleteOutlined />}
+                          loading={deletingId === item.id}
+                          onClick={(event) => event.stopPropagation()}
+                          aria-label={`Excluir conversa ${title}`}
+                        />
+                      </Popconfirm>
+                    </div>
+                  );
+                })}
+              </Space>
+            )}
+          </div>
+        </aside>
+
+        <main className="app-main">
           {error ? (
             <Alert
               type="error"
               message={error}
               showIcon
-              style={{ marginBottom: 16 }}
+              style={{ margin: 16 }}
+              closable
+              onClose={() => setError(null)}
             />
           ) : null}
-          {!selectedId ? (
-            <Empty description="Selecione uma conversa" />
-          ) : loadingMessages ? (
-            <Spin />
+
+          {!selectedConversation ? (
+            <div style={{ margin: 'auto', padding: 24 }}>
+              <Empty description="Selecione uma conversa" />
+            </div>
           ) : (
-            <List
-              dataSource={messages}
-              renderItem={(item) => (
-                <List.Item
-                  style={{
-                    justifyContent:
-                      item.direction === MessageDirection.Outbound
-                        ? 'flex-end'
-                        : 'flex-start',
-                    border: 'none',
-                  }}
-                >
-                  <div
-                    style={{
-                      maxWidth: '70%',
-                      background:
-                        item.direction === MessageDirection.Outbound
-                          ? token.colorPrimaryBg
-                          : token.colorFillTertiary,
-                      padding: '10px 12px',
-                      borderRadius: 12,
-                    }}
-                  >
-                    <Typography.Text>{item.body}</Typography.Text>
-                    <div>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                        {dayjs(item.createdAt).format('DD/MM HH:mm')}
-                      </Typography.Text>
-                    </div>
+            <>
+              <div className="chat-toolbar">
+                <div style={{ minWidth: 0 }}>
+                  <h2 className="chat-toolbar__title">
+                    {selectedConversation.contactName ||
+                      selectedConversation.phone ||
+                      selectedConversation.remoteJid}
+                  </h2>
+                  <div className="chat-toolbar__subtitle">
+                    {selectedConversation.phone || selectedConversation.remoteJid}
                   </div>
-                </List.Item>
-              )}
-            />
+                </div>
+                <Popconfirm
+                  title="Excluir conversa?"
+                  description="As mensagens desta conversa serão removidas."
+                  okText="Excluir"
+                  cancelText="Cancelar"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={() => void handleDeleteConversation(selectedConversation.id)}
+                >
+                  <Button
+                    danger
+                    icon={<DeleteOutlined />}
+                    loading={deletingId === selectedConversation.id}
+                  >
+                    Excluir
+                  </Button>
+                </Popconfirm>
+              </div>
+
+              <div className="chat-thread">
+                {loadingMessages ? (
+                  <div style={{ margin: 'auto' }}>
+                    <Spin />
+                  </div>
+                ) : messages.length === 0 ? (
+                  <Empty description="Sem mensagens nesta conversa" />
+                ) : (
+                  messages.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`bubble ${
+                        item.direction === MessageDirection.Outbound
+                          ? 'bubble--out'
+                          : 'bubble--in'
+                      }`}
+                    >
+                      {item.body}
+                      <span className="bubble__time">
+                        {dayjs(item.createdAt).format('DD/MM HH:mm')}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
           )}
-        </Content>
-      </Layout>
-    </Layout>
+        </main>
+      </div>
+    </div>
   );
 }

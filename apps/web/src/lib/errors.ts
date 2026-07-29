@@ -119,7 +119,10 @@ export function getFriendlyError(
     return 'Firebase do front não configurado. Preencha VITE_FIREBASE_* em apps/web/.env e reinicie o Vite.';
   }
 
-  if (/Evolution Go request failed/i.test(message)) {
+  if (/Evolution Go request failed/i.test(message) || /not authorized/i.test(message)) {
+    if (/401|not authorized/i.test(message)) {
+      return 'Evolution Go recusou a API key. Confira se EVOLUTION_API_KEY é a mesma em .env e GLOBAL_API_KEY do container, depois rode: docker compose up -d --force-recreate evolution-go api';
+    }
     return 'Falha ao falar com a Evolution Go. Confirme se o serviço está rodando na porta 8080.';
   }
 
@@ -158,6 +161,9 @@ export function getFriendlyError(
       /invalid token|token Firebase inválido|expirado/i.test(apiMessage)
     ) {
       return 'A API não validou seu login. Confira o Firebase Admin (service account) na API ou faça login novamente.';
+    }
+    if (statusCode === 404 || apiMessage === 'Not Found') {
+      return 'Não encontramos esse recurso. Atualize a página ou tente conectar o WhatsApp de novo.';
     }
     if (apiMessage.length <= 220) {
       return apiMessage;
