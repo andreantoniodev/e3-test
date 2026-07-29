@@ -119,11 +119,11 @@ export function getFriendlyError(
     return 'Firebase do front não configurado. Preencha VITE_FIREBASE_* em apps/web/.env e reinicie o Vite.';
   }
 
-  if (/Evolution Go request failed/i.test(message) || /not authorized/i.test(message)) {
+  if (/Evolution API request failed/i.test(message) || /Evolution Go request failed/i.test(message) || /not authorized/i.test(message)) {
     if (/401|not authorized/i.test(message)) {
-      return 'Evolution Go recusou a API key. Confira se EVOLUTION_API_KEY é a mesma em .env e GLOBAL_API_KEY do container, depois rode: docker compose up -d --force-recreate evolution-go api';
+      return 'Evolution API recusou a API key. Confira se EVOLUTION_API_KEY é a mesma em .env e AUTHENTICATION_API_KEY do container, depois rode: docker compose up -d --force-recreate evolution-api api';
     }
-    return 'Falha ao falar com a Evolution Go. Confirme se o serviço está rodando na porta 8080.';
+    return 'Falha ao falar com a Evolution API. Confirme se o serviço está rodando na porta 8080.';
   }
 
   const httpMatch = message.match(/^HTTP (\d{3})$/);

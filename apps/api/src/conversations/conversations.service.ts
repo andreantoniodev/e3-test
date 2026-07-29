@@ -6,6 +6,7 @@ import {
 import { WhatsAppInstanceStatus, MessageDirection } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvolutionClient } from '../whatsapp/evolution.client';
+import { sendTargetFromJid } from '../whatsapp/jid';
 
 @Injectable()
 export class ConversationsService {
@@ -92,10 +93,10 @@ export class ConversationsService {
       );
     }
 
-    const number =
-      conversation.phone ||
-      conversation.remoteJid.split('@')[0]?.split(':')[0] ||
-      '';
+    const number = sendTargetFromJid(
+      conversation.remoteJid,
+      conversation.phone,
+    );
 
     if (!number) {
       throw new BadRequestException('Número do contato inválido.');
@@ -103,9 +104,9 @@ export class ConversationsService {
 
     const sent = await this.evolution.sendText(
       instance.evolutionInstanceName,
-      instance.evolutionToken,
       number,
       text,
+      instance.evolutionToken || undefined,
     );
 
     const message = await this.prisma.message.create({
@@ -114,7 +115,7 @@ export class ConversationsService {
         unitId,
         direction: MessageDirection.outbound,
         body: text,
-        externalId: sent.data?.Info?.ID || null,
+        externalId: sent.key?.id || null,
       },
       select: {
         id: true,

@@ -29,41 +29,60 @@ services:
       - sh
       - -c
       - |
-        psql postgresql://postgres:postgres@postgres:5432/mini_crm -v ON_ERROR_STOP=1 -c "CREATE SCHEMA IF NOT EXISTS evogo_auth";
-        psql postgresql://postgres:postgres@postgres:5432/mini_crm -v ON_ERROR_STOP=1 -c "CREATE SCHEMA IF NOT EXISTS evogo_users";
+        psql postgresql://postgres:postgres@postgres:5432/mini_crm -v ON_ERROR_STOP=1 -c "CREATE SCHEMA IF NOT EXISTS evolution_api";
         echo "db-init done"
 
-  evolution-go:
-    image: evoapicloud/evolution-go:latest
-    container_name: mini-crm-evolution-go
+  redis:
+    image: redis:7-alpine
+    container_name: mini-crm-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  evolution-api:
+    image: evoapicloud/evolution-api:v2.3.7
+    container_name: mini-crm-evolution-api
     restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
+      SERVER_URL: http://localhost:8080
       SERVER_PORT: 8080
-      CLIENT_NAME: evolution
-      GLOBAL_API_KEY: ${EVOLUTION_API_KEY:-change-me}
-      POSTGRES_AUTH_DB: postgresql://postgres:postgres@postgres:5432/mini_crm?sslmode=disable&options=-csearch_path%3Devogo_auth
-      POSTGRES_USERS_DB: postgresql://postgres:postgres@postgres:5432/mini_crm?sslmode=disable&options=-csearch_path%3Devogo_users
-      DATABASE_SAVE_MESSAGES: "false"
-      WADEBUG: INFO
-      LOGTYPE: console
-      CONNECT_ON_STARTUP: "false"
-      WEBHOOK_FILES: "true"
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:-change-me}
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://postgres:postgres@postgres:5432/mini_crm?schema=evolution_api
+      DATABASE_CONNECTION_CLIENT_NAME: mini_crm_evolution
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
+      DATABASE_SAVE_MESSAGE_UPDATE: "false"
+      DATABASE_SAVE_DATA_CONTACTS: "false"
+      DATABASE_SAVE_DATA_CHATS: "false"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: evolution
+      CACHE_LOCAL_ENABLED: "false"
+      LOG_LEVEL: ERROR,WARN,INFO
     volumes:
-      - evolution_data:/app/dbdata
-      - evolution_logs:/app/logs
+      - evolution_instances:/evolution/instances
     depends_on:
       postgres:
         condition: service_healthy
       db-init:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/server/ok"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/ || exit 1"]
       interval: 15s
       timeout: 5s
-      retries: 10
-      start_period: 40s
+      retries: 12
+      start_period: 50s
 
   api:
     build:
@@ -78,7 +97,7 @@ services:
     environment:
       PORT: 3000
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/mini_crm?schema=public
-      EVOLUTION_API_URL: http://evolution-go:8080
+      EVOLUTION_API_URL: http://evolution-api:8080
       EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-change-me}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:-change-me}
       ADMIN_SECRET: ${ADMIN_SECRET:-change-me}
@@ -87,7 +106,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      evolution-go:
+      evolution-api:
         condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/health"]
@@ -98,5 +117,4 @@ services:
 
 volumes:
   pgdata:
-  evolution_data:
-  evolution_logs:
+  evolution_instances:

@@ -117,8 +117,11 @@ export function WhatsAppPanel() {
     void (async () => {
       try {
         await apiFetch<WhatsappStatus>('/whatsapp/cancel', { method: 'POST' });
-      } catch {
-        // ignore cleanup errors on enter
+      } catch (err) {
+        console.warn(
+          'Falha ao cancelar pareamento ao entrar no painel:',
+          getFriendlyError(err, 'Erro ao cancelar pareamento.'),
+        );
       }
       await loadStatus();
     })();
@@ -138,7 +141,7 @@ export function WhatsAppPanel() {
           await loadQr();
         }
       })();
-    }, 3000);
+    }, 1500);
     return () => window.clearInterval(id);
   }, [qrOpen, loadQr, loadStatus]);
 

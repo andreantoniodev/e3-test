@@ -12,8 +12,7 @@ export class EvolutionWebhookController {
     @Body()
     body: {
       event?: string;
-      instanceId?: string;
-      instanceToken?: string;
+      instance?: string;
       data?: unknown;
     },
   ) {
