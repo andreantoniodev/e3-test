@@ -22,7 +22,7 @@ RUN apk add --no-cache wget \
 ENV PORT=3000
 
 COPY package.json ./
-RUN pnpm install
+RUN pnpm install --prod && pnpm store prune
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
