@@ -5,7 +5,7 @@ próprio número, recebe mensagens em uma inbox isolada e responde automaticamen
 manda `Oi`. O acesso é feito com login Google e cada usuário só enxerga os dados da própria
 unidade.
 
-- **Deploy (frontend):** _preencher com a URL do Firebase Hosting_
+- **Deploy (frontend):** https://e3minicrm.firebaseapp.com ou https://e3minicrm.web.app
 - **Vídeo da demo:** _opcional_
 
 ## Stack
@@ -217,15 +217,41 @@ por webhook.
 
 ## Deploy do frontend (Firebase Hosting)
 
+Configuração já no repo:
+
+- [`firebase.json`](firebase.json) — `public: apps/web/dist`, rewrite SPA para `index.html`
+- [`.firebaserc`](.firebaserc) — projeto `e3minicrm`
+
+### URL pública
+
+https://e3minicrm.firebaseapp.com
+https://e3minicrm.web.app
+
+No Coolify / API, use essa URL em `CORS_ORIGIN`.
+
+### Pré-requisitos
+
 ```bash
-pnpm --filter @e3/web build
-npx firebase-tools login
-npx firebase-tools init hosting   # public: apps/web/dist, SPA: yes
-npx firebase-tools deploy --only hosting
+firebase login
 ```
 
-O `VITE_API_URL` do build precisa apontar para uma API acessível publicamente, e o domínio do
-Hosting deve ser adicionado em **Authentication → Settings → Authorized domains**.
+Preencha `apps/web/.env` (ver `apps/web/.env.example`). Em produção, `VITE_API_URL` deve ser a
+URL HTTPS da API (Coolify), não `localhost`.
+
+### Build e deploy
+
+```bash
+pnpm --filter @e3/web build
+firebase deploy --only hosting --project e3minicrm
+```
+
+(ou só `firebase deploy --only hosting` se o projeto default do `.firebaserc` estiver ok)
+
+As variáveis `VITE_*` entram no bundle no momento do **build**. Se mudar a URL da API, rebuild
+e deploy de novo.
+
+Em **Firebase Authentication → Settings → Authorized domains**, confirme
+`e3minicrm.web.app` e `e3minicrm.firebaseapp.com` (o Firebase costuma incluir automaticamente).
 
 ## O que faria diferente com mais tempo
 
