@@ -46,8 +46,8 @@ services:
   evolution-api:
     image: evoapicloud/evolution-api:v2.3.7
     restart: unless-stopped
-    ports:
-      - "18080:8080"
+    expose:
+      - "8283"
     environment:
       SERVICE_URL_EVOLUTION_API_8080: ${SERVICE_URL_EVOLUTION_API_8080}
       SERVER_URL: ${SERVICE_URL_EVOLUTION_API_8080}
