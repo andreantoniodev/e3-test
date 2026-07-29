@@ -114,6 +114,14 @@ pnpm --filter @e3/web dev
 
 Disponível em http://localhost:5173.
 
+### 6. Testes da API
+
+```bash
+pnpm --filter @e3/api test
+```
+
+Unitários com Vitest (Prisma e Evolution mockados). O script roda `prisma generate` antes.
+
 ## Primeiro acesso
 
 Como o login é com Google, não existe usuário semeado: o vínculo é feito por e-mail no
@@ -230,8 +238,9 @@ Hosting deve ser adicionado em **Authentication → Settings → Authorized doma
   WhatsApp desconectado, e-mail não vinculado e payload inválido — o `catch` usaria
   `instanceof` nessas classes, e o Nest traduziria o status HTTP. Em paralelo, um schema
   Zod validaria os payloads de webhook na entrada (hoje o narrowing é manual em `unknown`).
-- **Testes nos pontos críticos.** Priorizaria o guard de isolamento por unidade, o gatilho da
-  auto-resposta e a resolução de destinatário `@lid`, que foram justamente as fontes de bug.
+- **Ampliar os testes.** Já há unitários nos pontos críticos (isolamento por unidade,
+  auto-resposta, resolução `@lid` e guards). Com mais tempo, cobriria slugify, geração de
+  QR e um e2e do webhook.
 - **Fila para o webhook.** O processamento é síncrono na request; um worker daria retry e
   evitaria perder eventos sob carga.
 - **Rate limit.** Limitar tentativas no `/admin` e nas rotas autenticadas; o webhook da

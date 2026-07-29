@@ -145,6 +145,19 @@ export function WhatsAppPanel() {
     return () => window.clearInterval(id);
   }, [qrOpen, loadQr, loadStatus]);
 
+  useEffect(() => {
+    if (
+      data?.status !== WhatsAppInstanceStatus.Connected ||
+      !data.syncing
+    ) {
+      return;
+    }
+    const id = window.setInterval(() => {
+      void loadStatus();
+    }, 1500);
+    return () => window.clearInterval(id);
+  }, [data?.status, data?.syncing, loadStatus]);
+
   async function handleConnect() {
     setLoading(true);
     setError(null);
@@ -248,6 +261,14 @@ export function WhatsAppPanel() {
         <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
           {connectedPhone || '—'}
         </Typography.Text>
+      ) : null}
+      {isConnected && data?.syncing ? (
+        <Alert
+          type="info"
+          message="Sincronizando histórico do WhatsApp…"
+          showIcon
+          style={{ marginTop: 12 }}
+        />
       ) : null}
       <div className="wa-panel__row" style={{ marginTop: 10 }}>
         {isConnected ? (
