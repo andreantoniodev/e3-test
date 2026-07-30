@@ -38,8 +38,23 @@ export class FirebaseAuthGuard implements CanActivate {
           'Firebase Admin não configurado na API. Preencha FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL e FIREBASE_PRIVATE_KEY.',
         );
       }
+      if (/FIREBASE_PRIVATE_KEY inválida|SERVICE_ACCOUNT_JSON/i.test(detail)) {
+        throw new UnauthorizedException(
+          `Firebase Admin mal configurado: ${detail}`,
+        );
+      }
+      if (/incorrect "aud" claim|audience/i.test(detail)) {
+        throw new UnauthorizedException(
+          'Token de outro projeto Firebase. VITE_FIREBASE_PROJECT_ID do front deve ser igual a FIREBASE_PROJECT_ID da API.',
+        );
+      }
+      if (/expired/i.test(detail)) {
+        throw new UnauthorizedException(
+          'Token Firebase expirado. Faça login novamente.',
+        );
+      }
       throw new UnauthorizedException(
-        'Token Firebase inválido ou expirado. Faça login novamente.',
+        `Token Firebase inválido ou expirado. Faça login novamente.${detail ? ` (${detail})` : ''}`,
       );
     }
 
