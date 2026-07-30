@@ -112,7 +112,8 @@ export function getFriendlyError(
   }
 
   if (/Failed to fetch|NetworkError|Load failed|ECONNREFUSED/i.test(message)) {
-    return 'Não foi possível conectar à API. Confirme se o backend está no ar em http://localhost:3000.';
+    const apiUrl = import.meta.env.VITE_API_URL || 'a URL configurada em VITE_API_URL';
+    return `Não foi possível conectar à API. Confirme se o backend está no ar em ${apiUrl}.`;
   }
 
   if (/Firebase não configurado/i.test(message) && !message.trim().startsWith('{')) {

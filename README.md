@@ -106,6 +106,10 @@ Serviços e portas:
 | Postgres      | localhost:5432                    |
 | Redis         | localhost:6379                    |
 
+Na **primeira vez** que o ambiente sobe, abra http://localhost:8080 e faça login na
+Evolution API com a `EVOLUTION_API_KEY` definida no `.env`. Sem isso, o Manager fica
+bloqueado e a criação de instâncias pelo CRM pode falhar.
+
 ### 5. Frontend
 
 ```bash
@@ -203,13 +207,13 @@ todas as consultas.
 
 ## Decisões de arquitetura
 
-**PostgreSQL** A escolha do banco foi determinada pela Evolution API: ela
+**PostgreSQL -** A escolha do banco foi determinada pela Evolution API: ela
 persiste sessões, instâncias e contatos em banco próprio e só oferece schemas Prisma para
 PostgreSQL e MySQL. Como o Postgres já seria necessário para a
 Evolution, subir um segundo banco só para a aplicação adicionaria um container. Em vez disso, o mesmo Postgres atende os dois, separados por schema: a aplicação vive em `public` (migrações gerenciadas pelo Prisma daqui) e a
 Evolution em `evolution_api`, criado pelo serviço `db-init` no boot.
 
-**Evolution API** Rodar Baileys dentro do processo Node
+**Evolution API -** Rodar Baileys dentro do processo Node
 acoplaria o ciclo de vida da sessão do WhatsApp ao da API: cada deploy derrubaria a conexão,
 e reconectar exigiria gerenciar arquivos de sessão na aplicação. Com a Evolution em container
 próprio, a API é stateless em relação ao WhatsApp e fala com ela por HTTP, recebendo eventos
@@ -264,6 +268,10 @@ Em **Firebase Authentication → Settings → Authorized domains**, confirme
   WhatsApp desconectado, e-mail não vinculado e payload inválido — o `catch` usaria
   `instanceof` nessas classes, e o Nest traduziria o status HTTP. Em paralelo, um schema
   Zod validaria os payloads de webhook na entrada (hoje o narrowing é manual em `unknown`).
+- **Convite por WhatsApp ou e-mail.** Hoje o vínculo usuário→unidade é manual no `/admin`
+  (e-mail cadastrado antes do login). Com mais tempo, o admin geraria um link de convite
+  amarrado à unidade; o convidado abriria o link, faria login Google e já sairia vinculado
+  automaticamente — sem cadastrar o e-mail na mão.
 - **Ampliar os testes.** Já há unitários nos pontos críticos (isolamento por unidade,
   auto-resposta, resolução `@lid` e guards). Com mais tempo, cobriria slugify, geração de
   QR e um e2e do webhook.
