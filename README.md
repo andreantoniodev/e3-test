@@ -5,7 +5,7 @@ próprio número, recebe mensagens em uma inbox isolada e responde automaticamen
 manda `Oi`. O acesso é feito com login Google e cada usuário só enxerga os dados da própria
 unidade.
 
-- **Deploy (frontend):** https://e3minicrm.firebaseapp.com ou https://e3minicrm.web.app
+- **Deploy (frontend):** https://e3minicrm.firebaseapp.com
 - **Vídeo da demo:** _opcional_
 
 ## Stack
@@ -207,17 +207,16 @@ todas as consultas.
 
 ## Decisões de arquitetura
 
-**PostgreSQL -** A escolha do banco foi determinada pela Evolution API: ela
-persiste sessões, instâncias e contatos em banco próprio e só oferece schemas Prisma para
-PostgreSQL e MySQL. Como o Postgres já seria necessário para a
-Evolution, subir um segundo banco só para a aplicação adicionaria um container. Em vez disso, o mesmo Postgres atende os dois, separados por schema: a aplicação vive em `public` (migrações gerenciadas pelo Prisma daqui) e a
-Evolution em `evolution_api`, criado pelo serviço `db-init` no boot.
+**PostgreSQL -** O domínio é relacional (unidades → usuários → conversas → mensagens), e chaves
+estrangeiras transformam o isolamento por `unitId` em restrição do schema, não em convenção de
+código. A Evolution também precisa de um banco para guardar as sessões do WhatsApp, e aceita
+apenas PostgreSQL ou MySQL. Em vez de subir dois bancos, um único Postgres atende os dois: a
+aplicação usa o schema `public` e a Evolution o `evolution_api`, criado pelo `db-init` no boot.
 
-**Evolution API -** Rodar Baileys dentro do processo Node
-acoplaria o ciclo de vida da sessão do WhatsApp ao da API: cada deploy derrubaria a conexão,
-e reconectar exigiria gerenciar arquivos de sessão na aplicação. Com a Evolution em container
-próprio, a API é stateless em relação ao WhatsApp e fala com ela por HTTP, recebendo eventos
-por webhook.
+**Evolution API -** A sessão do WhatsApp é um processo longo: uma vez pareada por QR Code, ela
+precisa continuar viva. Se o Baileys rodasse dentro da API, cada deploy derrubaria a conexão e
+exigiria parear de novo. Por isso a Evolution fica em container separado, com o próprio volume de
+sessões — a API só conversa com ela por HTTP e recebe os eventos de mensagem por webhook.
 
 ## Deploy do frontend (Firebase Hosting)
 
@@ -229,7 +228,6 @@ Configuração já no repo:
 ### URL pública
 
 https://e3minicrm.firebaseapp.com
-https://e3minicrm.web.app
 
 Na API em produção, use essa URL em `CORS_ORIGIN`.
 
