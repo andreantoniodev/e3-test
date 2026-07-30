@@ -6,7 +6,7 @@ manda `Oi`. O acesso é feito com login Google e cada usuário só enxerga os da
 unidade.
 
 - **Deploy (frontend):** https://e3minicrm.firebaseapp.com
-- **Vídeo da demo:** _opcional_
+- **Vídeo da demo:** https://www.youtube.com/watch?v=8W8MPzYa4lo
 
 ## Stack
 
