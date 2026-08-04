@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { BOT_AUTO_REPLY_TEXT } from '../../constants';
+import { EventsGateway } from '../../events/events.gateway';
 import { MessageDirection } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { describeEvolutionError, EvolutionClient } from '../evolution.client';
@@ -18,6 +19,7 @@ export class WhatsappMessageService {
     private readonly prisma: PrismaService,
     private readonly evolution: EvolutionClient,
     private readonly pairingService: WhatsappPairingService,
+    @Optional() private readonly eventsGateway?: EventsGateway,
   ) {}
 
   extractMessageBody(message: Record<string, unknown> | undefined) {
@@ -124,7 +126,7 @@ export class WhatsappMessageService {
         }
       }
 
-      await this.prisma.message.create({
+      const createdMessage = await this.prisma.message.create({
         data: {
           conversationId: conversation.id,
           unitId: instance.unitId,
@@ -133,6 +135,17 @@ export class WhatsappMessageService {
           externalId: item.key.id || null,
         },
       });
+
+      if (this.eventsGateway) {
+        this.eventsGateway.emitToUnit(instance.unitId, 'message:created', {
+          conversationId: conversation.id,
+          message: createdMessage,
+        });
+        this.eventsGateway.emitToUnit(instance.unitId, 'conversation:updated', {
+          conversationId: conversation.id,
+          updatedAt: conversation.updatedAt,
+        });
+      }
 
       if (this.isAutoReplyTrigger(body)) {
         const target = sendTargetFromJid(remoteJid, phone);
@@ -164,7 +177,7 @@ export class WhatsappMessageService {
         params.evolutionToken || undefined,
       );
 
-      await this.prisma.message.create({
+      const createdMessage = await this.prisma.message.create({
         data: {
           conversationId: params.conversationId,
           unitId: params.unitId,
@@ -174,10 +187,21 @@ export class WhatsappMessageService {
         },
       });
 
-      await this.prisma.conversation.update({
+      const updatedConversation = await this.prisma.conversation.update({
         where: { id: params.conversationId },
         data: { updatedAt: new Date() },
       });
+
+      if (this.eventsGateway) {
+        this.eventsGateway.emitToUnit(params.unitId, 'message:created', {
+          conversationId: params.conversationId,
+          message: createdMessage,
+        });
+        this.eventsGateway.emitToUnit(params.unitId, 'conversation:updated', {
+          conversationId: params.conversationId,
+          updatedAt: updatedConversation.updatedAt,
+        });
+      }
     } catch (error) {
       this.logger.error(
         `Falha ao enviar resposta automática | instance=${

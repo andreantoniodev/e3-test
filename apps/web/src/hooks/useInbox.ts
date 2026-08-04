@@ -4,6 +4,7 @@ import { getFriendlyError } from '../lib/errors';
 import { conversationService } from '../services/conversationService';
 import { userService } from '../services/userService';
 import { ConversationItem, MeResponse, MessageItem } from '../types';
+import { useSocket } from './useSocket';
 
 export function useInbox() {
   const [me, setMe] = useState<MeResponse | null>(null);
@@ -114,6 +115,30 @@ export function useInbox() {
     [],
   );
 
+  const handleMessageCreatedSocket = useCallback(
+    (payload: { conversationId: string; message: MessageItem }) => {
+      if (payload.conversationId === selectedId) {
+        setMessages((prev) => {
+          if (prev.some((msg) => msg.id === payload.message.id)) {
+            return prev;
+          }
+          return [...prev, payload.message];
+        });
+      }
+      void loadConversations({ silent: true });
+    },
+    [selectedId, loadConversations],
+  );
+
+  const handleConversationUpdatedSocket = useCallback(() => {
+    void loadConversations({ silent: true });
+  }, [loadConversations]);
+
+  useSocket(me?.unit.id, {
+    onMessageCreated: handleMessageCreatedSocket,
+    onConversationUpdated: handleConversationUpdatedSocket,
+  });
+
   useEffect(() => {
     void (async () => {
       setLoadingMe(true);
@@ -137,7 +162,7 @@ export function useInbox() {
     void loadConversations();
     const id = window.setInterval(() => {
       void loadConversations({ silent: true });
-    }, 8000);
+    }, 12000);
     return () => window.clearInterval(id);
   }, [me, loadConversations]);
 
@@ -151,7 +176,7 @@ export function useInbox() {
     void loadMessages(selectedId);
     const id = window.setInterval(() => {
       void loadMessages(selectedId, { silent: true });
-    }, 4000);
+    }, 8000);
     return () => window.clearInterval(id);
   }, [selectedId, loadMessages]);
 

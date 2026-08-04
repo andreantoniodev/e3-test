@@ -5,6 +5,7 @@ import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
 import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
 import { ConversationsModule } from './conversations/conversations.module';
+import { EventsModule } from './events/events.module';
 import { HealthController } from './health/health.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './users/users.module';
@@ -25,6 +26,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
       },
     ]),
     PrismaModule,
+    EventsModule,
     AuthModule,
     UsersModule,
     ConversationsModule,
