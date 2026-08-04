@@ -1,6 +1,9 @@
 import { Logger } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BOT_AUTO_REPLY_TEXT } from '../constants';
+import { WhatsappMessageService } from './services/whatsapp-message.service';
+import { WhatsappPairingService } from './services/whatsapp-pairing.service';
+import { WhatsappSyncService } from './services/whatsapp-sync.service';
 import { WhatsappService } from './whatsapp.service';
 
 const instance = {
@@ -53,7 +56,21 @@ describe('WhatsappService.handleWebhook (messages.upsert)', () => {
     sendText: vi.fn(),
     resolveQrImage: vi.fn(),
   };
-  const service = new WhatsappService(prisma as never, evolution as never);
+
+  const syncService = new WhatsappSyncService();
+  const pairingService = new WhatsappPairingService(prisma as never, evolution as never);
+  const messageService = new WhatsappMessageService(
+    prisma as never,
+    evolution as never,
+    pairingService,
+  );
+  const service = new WhatsappService(
+    prisma as never,
+    evolution as never,
+    syncService,
+    pairingService,
+    messageService,
+  );
 
   beforeEach(() => {
     vi.clearAllMocks();
