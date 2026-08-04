@@ -17,12 +17,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
       {
         name: 'default',
         ttl: 60000,
-        limit: 100,
-      },
-      {
-        name: 'admin',
-        ttl: 60000,
-        limit: 5,
+        limit: 300,
       },
     ]),
     PrismaModule,

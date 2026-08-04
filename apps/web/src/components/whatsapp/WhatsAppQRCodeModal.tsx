@@ -45,7 +45,7 @@ export function WhatsAppQRCodeModal({
         </Space>
       }
       centered
-      destroyOnClose={false}
+      destroyOnHidden={false}
     >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>

@@ -29,7 +29,7 @@ export function ChatHeader({ user, me, onLogout }: ChatHeaderProps) {
       <Dropdown
         trigger={['click']}
         placement="bottomRight"
-        dropdownRender={() => (
+        popupRender={() => (
           <div className="user-menu">
             <div className="user-menu__identity">
               <strong>{user?.displayName || me.name || 'Conta'}</strong>
