@@ -279,3 +279,7 @@ Em **Firebase Authentication → Settings → Authorized domains**, confirme
   Evolution ficaria de fora (ou com teto bem alto), para não dropar eventos reais.
 - **Observabilidade e CI.** Logs estruturados com correlação por instância, além de lint,
   typecheck e build no pipeline.
+  
+---
+
+> **Nota pós-entrega:** As melhorias citadas nesta seção (refatoração de arquivos monolíticos no backend e frontend, hierarquia de exceções de domínio no NestJS, validação estrita Zod no webhook, ampliação de testes unitários e E2E, controle de rate limit com `@nestjs/throttler`, comunicação em tempo real via WebSockets/Socket.IO, cliente HTTP centralizado com interceptores e tratamento de erros por classes de domínio) foram posteriormente implementadas e organizadas em Pull Requests e branches técnicas dedicadas no repositório.
