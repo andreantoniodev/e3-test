@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
+import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
 import { ConversationsModule } from './conversations/conversations.module';
 import { HealthController } from './health/health.controller';
 import { PrismaModule } from './prisma/prisma.module';
@@ -9,6 +12,18 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
 
 @Module({
   imports: [
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60000,
+        limit: 100,
+      },
+      {
+        name: 'admin',
+        ttl: 60000,
+        limit: 5,
+      },
+    ]),
     PrismaModule,
     AuthModule,
     UsersModule,
@@ -17,5 +32,11 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     AdminModule,
   ],
   controllers: [HealthController],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: CustomThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}
