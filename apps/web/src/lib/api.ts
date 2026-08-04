@@ -1,47 +1,117 @@
+import { AppError, ErrorParser, HttpUnauthorizedError } from '../utils/errors';
 import { firebaseAuth } from './firebase';
-import { MessageDirection, WhatsAppInstanceStatus } from './enums';
-import { getFriendlyError } from './errors';
 
-export { MessageDirection, WhatsAppInstanceStatus };
+export * from '../types';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(
   /\/$/,
   '',
 );
 
-async function getToken() {
-  const user = firebaseAuth?.currentUser;
-  if (!user) {
-    throw new Error('Unauthenticated');
+export interface RequestOptions extends RequestInit {
+  adminSecret?: string;
+  skipAuth?: boolean;
+}
+
+type UnauthorizedHandler = () => void;
+
+export class HttpClient {
+  private static onUnauthorizedListeners: Set<UnauthorizedHandler> = new Set();
+
+  static onUnauthorized(handler: UnauthorizedHandler) {
+    HttpClient.onUnauthorizedListeners.add(handler);
+    return () => {
+      HttpClient.onUnauthorizedListeners.delete(handler);
+    };
   }
-  return user.getIdToken();
+
+  private static async getAuthToken(): Promise<string> {
+    const user = firebaseAuth?.currentUser;
+    if (!user) {
+      throw new HttpUnauthorizedError('Usuário não autenticado.');
+    }
+    try {
+      return await user.getIdToken();
+    } catch (err) {
+      throw new HttpUnauthorizedError('Falha ao obter token de acesso.');
+    }
+  }
+
+  static async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+    const { adminSecret, skipAuth, headers, ...restOptions } = options;
+
+    const requestHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...((headers as Record<string, string>) || {}),
+    };
+
+    try {
+      if (adminSecret) {
+        requestHeaders['x-admin-secret'] = adminSecret;
+      } else if (!skipAuth) {
+        const token = await HttpClient.getAuthToken();
+        requestHeaders.Authorization = `Bearer ${token}`;
+      }
+
+      const response = await fetch(`${API_URL}${path}`, {
+        ...restOptions,
+        headers: requestHeaders,
+      });
+
+      if (!response.ok) {
+        const rawBody = await response.text();
+        const parsedError = ErrorParser.parse(
+          rawBody || `HTTP ${response.status}`,
+          'Falha na requisição.',
+        );
+
+        if (response.status === 401 || parsedError instanceof HttpUnauthorizedError) {
+          HttpClient.onUnauthorizedListeners.forEach((listener) => listener());
+        }
+
+        throw parsedError;
+      }
+
+      if (response.status === 204) {
+        return undefined as T;
+      }
+
+      return (await response.json()) as T;
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw ErrorParser.parse(error, 'Falha de comunicação com a API.');
+    }
+  }
+
+  static get<T>(path: string, options?: RequestOptions): Promise<T> {
+    return HttpClient.request<T>(path, { ...options, method: 'GET' });
+  }
+
+  static post<T>(path: string, body?: unknown, options?: RequestOptions): Promise<T> {
+    return HttpClient.request<T>(path, {
+      ...options,
+      method: 'POST',
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  }
+
+  static patch<T>(path: string, body?: unknown, options?: RequestOptions): Promise<T> {
+    return HttpClient.request<T>(path, {
+      ...options,
+      method: 'PATCH',
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  }
+
+  static delete<T>(path: string, options?: RequestOptions): Promise<T> {
+    return HttpClient.request<T>(path, { ...options, method: 'DELETE' });
+  }
 }
 
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  try {
-    const token = await getToken();
-    const response = await fetch(`${API_URL}${path}`, {
-      ...init,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-        ...(init.headers || {}),
-      },
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(text || `HTTP ${response.status}`);
-    }
-
-    if (response.status === 204) {
-      return undefined as T;
-    }
-
-    return response.json() as Promise<T>;
-  } catch (error) {
-    throw new Error(getFriendlyError(error, 'Falha ao comunicar com a API.'));
-  }
+  return HttpClient.request<T>(path, init);
 }
 
 export async function adminFetch<T>(
@@ -49,91 +119,5 @@ export async function adminFetch<T>(
   adminSecret: string,
   init: RequestInit = {},
 ): Promise<T> {
-  try {
-    const response = await fetch(`${API_URL}${path}`, {
-      ...init,
-      headers: {
-        'Content-Type': 'application/json',
-        'x-admin-secret': adminSecret,
-        ...(init.headers || {}),
-      },
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(text || `HTTP ${response.status}`);
-    }
-
-    if (response.status === 204) {
-      return undefined as T;
-    }
-
-    return response.json() as Promise<T>;
-  } catch (error) {
-    throw new Error(getFriendlyError(error, 'Falha ao comunicar com a API admin.'));
-  }
+  return HttpClient.request<T>(path, { ...init, adminSecret });
 }
-
-export type AdminUnit = {
-  id: string;
-  name: string;
-  slug: string;
-  createdAt: string;
-  updatedAt?: string;
-  _count?: {
-    users: number;
-    conversations: number;
-    instances: number;
-  };
-};
-
-export type AdminUser = {
-  id: string;
-  email: string;
-  name: string | null;
-  unitId: string;
-  createdAt: string;
-  updatedAt: string;
-  unit: { id: string; name: string; slug: string };
-};
-
-export type MeResponse = {
-  id: string;
-  email: string;
-  name: string | null;
-  unit: { id: string; name: string; slug: string };
-};
-
-export type ConversationItem = {
-  id: string;
-  remoteJid: string;
-  phone: string | null;
-  contactName: string | null;
-  createdAt: string;
-  updatedAt: string;
-  messages: Array<{
-    id: string;
-    body: string;
-    direction: MessageDirection;
-    createdAt: string;
-  }>;
-};
-
-export type MessageItem = {
-  id: string;
-  conversationId: string;
-  direction: MessageDirection;
-  body: string;
-  externalId: string | null;
-  createdAt: string;
-};
-
-export type WhatsappStatus = {
-  status: WhatsAppInstanceStatus;
-  instanceName: string | null;
-  instanceId?: string | null;
-  phone?: string | null;
-  qrcode?: string | null;
-  code?: string | null;
-  syncing?: boolean;
-};

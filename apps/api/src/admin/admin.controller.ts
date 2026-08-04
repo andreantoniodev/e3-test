@@ -8,11 +8,13 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AdminSecretGuard } from './admin-secret.guard';
 import { AdminService } from './admin.service';
 
 @Controller('admin')
 @UseGuards(AdminSecretGuard)
+@Throttle({ default: { ttl: 60000, limit: 15 } })
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
