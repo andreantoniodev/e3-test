@@ -85,6 +85,34 @@ const firebaseMessages: Record<string, string> = {
   'auth/internal-error': 'Erro interno do Firebase. Tente novamente em instantes.',
 };
 
+function translateEnglishText(msg: string): string {
+  if (!msg) {
+    return msg;
+  }
+  if (/ThrottlerException|Too Many Requests/i.test(msg)) {
+    return 'Muitas requisições em pouco tempo. Por favor, aguarde alguns instantes.';
+  }
+  if (/^Unauthorized$|^Unauthenticated$/i.test(msg)) {
+    return 'Sessão expirada ou não autorizada. Faça login novamente.';
+  }
+  if (/^Forbidden$|^Forbidden resource$/i.test(msg)) {
+    return 'Acesso negado. Seu e-mail precisa estar cadastrado no seed da API.';
+  }
+  if (/^Not Found$/i.test(msg)) {
+    return 'Recurso não encontrado.';
+  }
+  if (/^Bad Request$|^Bad Request Exception$/i.test(msg)) {
+    return 'Dados fornecidos são inválidos. Verifique os campos e tente novamente.';
+  }
+  if (/^Internal Server Error$/i.test(msg)) {
+    return 'Erro interno do servidor. Tente novamente em instantes.';
+  }
+  if (/^Bad Gateway$/i.test(msg)) {
+    return 'Falha ao se comunicar com a Evolution API. Verifique a integração.';
+  }
+  return msg;
+}
+
 export function getFriendlyError(
   error: unknown,
   fallback = 'Ocorreu um erro inesperado. Tente novamente.',
@@ -126,16 +154,19 @@ export function getFriendlyError(
     /not authorized/i.test(message)
   ) {
     if (/401|not authorized/i.test(message)) {
-      return 'Evolution API recusou a API key. Confira se EVOLUTION_API_KEY é a mesma em .env e AUTHENTICATION_API_KEY do container, depois rode: docker compose up -d --force-recreate evolution-api api';
+      return 'Evolution API recusou a API key. Confira se EVOLUTION_API_KEY é a mesma em .env e AUTHENTICATION_API_KEY do container.';
     }
-    return 'Falha ao falar com a Evolution API. Confirme se o serviço está rodando na porta 8080.';
+    return 'Falha ao falar com a Evolution API. Confirme se o serviço está rodando.';
   }
 
   const httpMatch = message.match(/^HTTP (\d{3})$/);
   if (httpMatch) {
     const status = Number(httpMatch[1]);
+    if (status === 429) {
+      return 'Muitas requisições em pouco tempo. Por favor, aguarde alguns instantes.';
+    }
     if (status === 401) {
-      return 'A API não validou seu login. Confira o Firebase Admin na API ou faça login novamente.';
+      return 'A API não validou seu login. Faça login novamente.';
     }
     if (status === 403) {
       return 'Acesso negado. Seu e-mail precisa estar cadastrado no seed da API.';
@@ -157,6 +188,9 @@ export function getFriendlyError(
     if (/não está cadastrado|seed da API/i.test(apiMessage)) {
       return apiMessage;
     }
+    if (statusCode === 429 || /ThrottlerException|Too Many Requests/i.test(apiMessage)) {
+      return 'Muitas requisições em pouco tempo. Por favor, aguarde alguns instantes.';
+    }
     if (statusCode === 403 || /forbidden/i.test(apiMessage)) {
       return 'Acesso negado. Seu e-mail precisa estar cadastrado no seed da API.';
     }
@@ -165,13 +199,14 @@ export function getFriendlyError(
       apiMessage === 'Unauthorized' ||
       /invalid token|token Firebase inválido|expirado/i.test(apiMessage)
     ) {
-      return 'A API não validou seu login. Confira o Firebase Admin (service account) na API ou faça login novamente.';
+      return 'A API não validou seu login. Faça login novamente.';
     }
     if (statusCode === 404 || apiMessage === 'Not Found') {
       return 'Não encontramos esse recurso. Atualize a página ou tente conectar o WhatsApp de novo.';
     }
-    if (apiMessage.length <= 220) {
-      return apiMessage;
+    const translated = translateEnglishText(apiMessage);
+    if (translated.length <= 220) {
+      return translated;
     }
   }
 
@@ -179,20 +214,17 @@ export function getFriendlyError(
     return 'Firebase Admin não configurado na API. Preencha FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL e FIREBASE_PRIVATE_KEY e reinicie a API.';
   }
 
-  if (/não está cadastrado|seed da API/i.test(message) && !message.trim().startsWith('{')) {
-    return message;
-  }
-
   if (message === 'Unauthenticated' || message === 'Unauthorized') {
-    return 'A API não validou seu login. Confira o Firebase Admin na API ou faça login novamente.';
+    return 'A API não validou seu login. Faça login novamente.';
   }
 
   if (message.startsWith('Firebase:')) {
     return 'Falha na autenticação do Firebase. Verifique Authentication e o provedor Google no Console.';
   }
 
-  if (message && message.length <= 220 && !message.startsWith('{')) {
-    return message;
+  const translatedMsg = translateEnglishText(message);
+  if (translatedMsg && translatedMsg.length <= 220 && !translatedMsg.startsWith('{')) {
+    return translatedMsg;
   }
 
   return fallback;

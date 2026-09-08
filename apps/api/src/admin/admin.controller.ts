@@ -14,7 +14,7 @@ import { AdminService } from './admin.service';
 
 @Controller('admin')
 @UseGuards(AdminSecretGuard)
-@Throttle({ default: { ttl: 60000, limit: 10 } })
+@Throttle({ default: { ttl: 60000, limit: 15 } })
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
