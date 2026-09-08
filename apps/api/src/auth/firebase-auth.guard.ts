@@ -1,10 +1,10 @@
 import {
   CanActivate,
   ExecutionContext,
-  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { UserNotLinkedException } from '../common/exceptions';
 import { PrismaService } from '../prisma/prisma.service';
 import { FirebaseService } from './firebase.service';
 
@@ -70,9 +70,7 @@ export class FirebaseAuthGuard implements CanActivate {
     });
 
     if (!user) {
-      throw new ForbiddenException(
-        `E-mail ${decoded.email} não está vinculado a nenhuma unidade. Cadastre-o no painel /admin.`,
-      );
+      throw new UserNotLinkedException(decoded.email);
     }
 
     if (
